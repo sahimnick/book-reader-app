@@ -50,6 +50,46 @@ jobs:
           name: android-apk
           path: composeApp/build/outputs/apk/**/*.apk
 
+  # Boots an emulator and actually runs the app. Everything else in this
+  # workflow either tests pure logic or compiles; this is the only job where
+  # the SQLDelight schema, the seeded dictionary, the repositories and the
+  # first Compose composition execute.
+  android-instrumented:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+
+      # Hardware acceleration; without it the emulator is too slow to finish.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run instrumented tests on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: ./gradlew :composeApp:connectedDebugAndroidTest --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: instrumented-test-report
+          path: composeApp/build/reports/androidTests/
+
   ios:
     # Apple's toolchain is macOS-only; this job cannot run on a Linux runner.
     # macos-15 ships Xcode 16, which is required to read the project format

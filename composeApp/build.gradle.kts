@@ -52,6 +52,18 @@ kotlin {
             implementation(kotlin("test"))
         }
 
+        // Runs on a real device or emulator. This is the only place the app's
+        // wiring — SQLDelight schema, seeded dictionary, repositories, Compose
+        // composition — actually executes, so it is where a broken query or a
+        // crash on first launch gets caught.
+        androidInstrumentedTest.dependencies {
+            implementation(kotlin("test"))
+            implementation("androidx.test.ext:junit:1.2.1")
+            implementation("androidx.test:runner:1.6.2")
+            implementation("androidx.test:core-ktx:1.6.1")
+            implementation(libs.kotlinx.coroutines.core)
+        }
+
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
@@ -77,6 +89,7 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
