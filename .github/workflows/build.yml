@@ -63,6 +63,12 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # The cache save/cleanup post-action logs ~150 lines at --info after
+          # every step, which buries the xcodebuild diagnostics this job exists
+          # to surface. Correctness of the build matters more here than a warm
+          # cache.
+          cache-disabled: true
 
       - name: Compile Kotlin for iOS
         run: ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 --no-daemon
