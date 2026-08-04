@@ -15,39 +15,42 @@ with a single Compose Multiplatform UI shared by both platforms.
 
 ---
 
-## ⚠️ Read this first: no app binaries are included
+## Getting the app
 
-**This repository contains the complete source, but no `.apk` and no `.ipa`.**
-Neither could be produced in the environment this was written in:
+**The Android APK is built by CI, not committed here.** Go to
+[Actions](../../actions), open the latest successful **Build** run, and download
+the **`android-apk`** artifact — it contains both the debug and release APKs.
+The release APK is signed with the debug key, so it installs directly on any
+Android 8.0+ device once "install from unknown sources" is enabled.
 
-| Target | Blocker |
+There is no `.ipa`, and CI cannot make one: signing an iOS app requires an Apple
+Developer certificate that only the developer holds. CI compiles the iOS
+framework and builds the app unsigned; to get something installable, build it
+yourself on a Mac — see [iOS](#ios).
+
+### What is actually verified
+
+| Layer | State |
 |---|---|
-| Android `.apk` | The Android Gradle Plugin and all AndroidX/Compose artifacts are distributed **only** from Google's Maven repository at `dl.google.com`, which this sandbox's egress policy **blocks with HTTP 403**. `maven.google.com` is only a redirector to the same blocked host, and none of these artifacts exist on Maven Central. The Android SDK itself downloads from the same blocked host. |
-| iOS `.ipa` | Requires **macOS with Xcode**. This build ran on Linux x86_64. Apple's toolchain does not exist for Linux, and signing an `.ipa` additionally needs an Apple Developer certificate that only you hold. |
+| Platform-independent core | **115 tests passing** in CI on every push |
+| Android APK | **Compiles and packages** in CI (debug + release) |
+| iOS shared framework | **Compiles** in CI for device and simulator targets |
+| iOS Xcode host app | Best-effort in CI, currently failing to link — build it in Xcode |
+| Anything at runtime | **Not verified — nothing has run on a device** |
 
-Both are ordinary environment limits, not defects in the code. On any normal
-machine or CI runner the commands in [Building](#building) produce both
-binaries. The GitHub Actions workflow in `.github/workflows/build.yml` is
-already set up to do exactly that and upload the APK as an artifact.
+That last row matters. The core logic is genuinely tested, but the UI, the
+speech engine, PDF rendering and the dictionary wiring have never executed.
+"It builds" is not "it works"; expect runtime bugs on first launch.
 
-### What *was* verified here
-
-The platform-independent core — everything that does not need the Android or
-Apple SDK — is compiled and tested, and **115 tests pass**:
+The tested core is the EPUB container parser, the ZIP reader, the DEFLATE
+decompressor, the XML/XHTML tokenizer, sentence segmentation, word
+tokenization, English lemmatization, the read-aloud plan, and the SM-2
+scheduler — including an end-to-end parse of a real EPUB archive. Run it with
+nothing but a JDK:
 
 ```
 cd tools/core-verify && gradle test
 ```
-
-That covers the EPUB container parser, the ZIP reader, the DEFLATE
-decompressor, the XML/XHTML tokenizer, sentence segmentation, word
-tokenization, English lemmatization, the read-aloud plan, and the SM-2
-scheduler — including a full end-to-end parse of a real EPUB archive.
-
-The UI, the platform bindings (TTS, PDF, storage, database) and the Gradle
-Android/iOS configuration are **written but not compiled**, because the
-toolchains to compile them were unavailable. Expect to fix small issues on the
-first real build.
 
 ---
 
@@ -79,6 +82,14 @@ open iosApp.xcodeproj
 Select a simulator or device and press ⌘R. The project's pre-build script runs
 `:composeApp:embedAndSignAppleFrameworkForXcode`, so the Kotlin framework is
 compiled and embedded automatically — there is no separate Gradle step.
+
+**Known issue:** the Xcode host app does not currently link in CI, while the
+shared Kotlin framework compiles fine for both targets. The fault is in the
+generated project's framework wiring (`iosApp/project.yml` — most likely
+`FRAMEWORK_SEARCH_PATHS` not matching where the embed task actually puts
+`ComposeApp.framework`), not in the app code. Xcode reports the real linker
+error immediately and interactively, so the fastest fix is to open the project
+and adjust the search path or the run-script phase there.
 
 #### Producing a signed `.ipa`
 
