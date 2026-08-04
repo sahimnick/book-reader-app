@@ -83,11 +83,12 @@ Select a simulator or device and press ⌘R. The project's pre-build script runs
 `:composeApp:embedAndSignAppleFrameworkForXcode`, so the Kotlin framework is
 compiled and embedded automatically — there is no separate Gradle step.
 
-**If Xcode refuses to open the generated project** with "the project cannot be
-opened because it is in a future Xcode project file format", your XcodeGen is
-newer than your Xcode. `iosApp/project.yml` pins `objectVersion: 54`, which
-Xcode 13 through 16 all read; raise it if you are on something newer and want
-the current format.
+**Xcode 16 or newer is required.** Current XcodeGen emits project format
+`objectVersion 77`, and older Xcode rejects it outright with "the project
+cannot be opened because it is in a future Xcode project file format (77)".
+XcodeGen ignores the `objectVersion` option that would pin an older format, so
+the practical answer is to use a matching Xcode — or generate the project once
+on a machine that has one and commit the result.
 
 #### Producing a signed `.ipa`
 

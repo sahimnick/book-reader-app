@@ -13,13 +13,6 @@ options:
   deploymentTarget:
     iOS: "15.0"
   createIntermediateGroups: true
-  # Pin the pbxproj format. Current XcodeGen defaults to objectVersion 77, the
-  # Xcode 16 format, which older Xcode refuses to open outright:
-  #   "the project cannot be opened because it is in a future Xcode project
-  #    file format (77)"
-  # 54 is readable by Xcode 13 through 16, so the generated project opens
-  # whatever version is installed.
-  objectVersion: 54
 
 settings:
   base:
