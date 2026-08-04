@@ -80,6 +80,7 @@ jobs:
       - name: Build unsigned app for the simulator (best-effort)
         continue-on-error: true
         run: |
+          set +e
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
@@ -87,4 +88,23 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build > /tmp/xcodebuild.log 2>&1
+          status=$?
+
+          # Surface just the diagnostics. xcodebuild is extremely verbose and
+          # the surrounding Gradle output buries the one line that matters, so
+          # print the errors on their own before anything else.
+          echo "===== xcodebuild diagnostics (exit $status) ====="
+          grep -nE "error:|ld: |framework not found|clang: error|Undefined symbol|\*\* BUILD FAILED" \
+            /tmp/xcodebuild.log | head -40 || echo "(no matching diagnostic lines)"
+          echo "===== last 60 lines ====="
+          tail -60 /tmp/xcodebuild.log
+          exit $status
+
+      # The full log, so the linker failure can be diagnosed without re-running.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-xcodebuild-log
+          path: /tmp/xcodebuild.log
+          if-no-files-found: warn
