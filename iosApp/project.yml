@@ -40,6 +40,8 @@ targets:
           - $(inherited)
           - -framework
           - ComposeApp
+          # Resolves _sqlite3_* from SQLDelight's native driver.
+          - -lsqlite3
     preBuildScripts:
       # Compiles the shared Kotlin module into ComposeApp.framework before Xcode
       # links it. embedAndSignAppleFrameworkForXcode reads the SDK/arch/config

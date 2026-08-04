@@ -24,6 +24,11 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            // SQLDelight's native driver binds system SQLite through SQLiter's
+            // cinterop, which leaves _sqlite3_* undefined until libsqlite3 is
+            // linked. Declaring it here means anything consuming the framework
+            // inherits the requirement.
+            linkerOpts("-lsqlite3")
         }
     }
 
