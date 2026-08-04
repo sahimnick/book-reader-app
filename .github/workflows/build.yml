@@ -115,6 +115,24 @@ jobs:
             composeApp/build/reports/androidTests/
             composeApp/build/outputs/androidTest-results/
 
+      # Last thing in the job, on purpose. Emulator and Gradle output is long
+      # enough that the result gets buried; repeating it here means the summary
+      # and every failing test name are the final lines of the log.
+      - name: Instrumented test summary
+        if: always()
+        run: |
+          results=$(find composeApp/build/outputs -name '*.xml' -path '*androidTest-results*' 2>/dev/null)
+          echo "===== INSTRUMENTED TEST SUMMARY ====="
+          if [ -z "$results" ]; then
+            echo "no result XML produced — the suite did not run"
+            exit 0
+          fi
+          grep -ho 'tests="[0-9]*" *failures="[0-9]*"[^>]*' $results || true
+          echo "----- failing tests -----"
+          grep -hoE '<testcase[^>]*name="[^"]*"[^>]*classname="[^"]*"' $results > /tmp/all.txt || true
+          grep -B2 -hE '<(failure|error)' $results | grep -oE 'name="[^"]*"|message="[^"]*"' | head -40 \
+            || echo "(none reported)"
+
   ios:
     # Apple's toolchain is macOS-only; this job cannot run on a Linux runner.
     # macos-15 ships Xcode 16, which is required to read the project format
