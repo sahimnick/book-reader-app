@@ -5,8 +5,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
-import platform.AVFAudio.AVAudioSession
-import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVSpeechBoundary
 import platform.AVFAudio.AVSpeechSynthesisVoice
 import platform.AVFAudio.AVSpeechSynthesizer
@@ -87,13 +85,14 @@ private class IosSpeechEngine : SpeechEngine {
 
     init {
         synthesizer.delegate = delegate
-        // Playback category keeps speech audible when the ring switch is silent,
-        // which is what a reader expects from a read-aloud feature.
-        runCatching {
-            val session = AVAudioSession.sharedInstance()
-            session.setCategory(AVAudioSessionCategoryPlayback, error = null)
-            session.setActive(true, error = null)
-        }
+        // Note: the audio session is deliberately left at its default.
+        //
+        // Setting the Playback category would keep speech audible when the ring
+        // switch is silent, which is nicer for a read-aloud feature, but
+        // AVSpeechSynthesizer works without it. Configure it in the Swift host
+        // (AVAudioSession.sharedInstance().setCategory(.playback)) if you want
+        // that behaviour — doing it there keeps this file free of the
+        // error-pointer bindings that vary between Kotlin/Native releases.
     }
 
     override suspend fun prepare(): Boolean {

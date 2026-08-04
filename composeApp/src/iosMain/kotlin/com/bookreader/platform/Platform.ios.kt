@@ -9,6 +9,7 @@ import com.bookreader.core.zip.RawInflater
 import com.bookreader.db.BookReaderDb
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,6 +25,9 @@ import platform.Foundation.dataWithContentsOfURL
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.writeToFile
 import org.jetbrains.skia.Image as SkiaImage
+import platform.posix.fclose
+import platform.posix.fopen
+import platform.posix.fwrite
 import platform.posix.memcpy
 
 actual class PlatformContext
@@ -57,14 +61,6 @@ internal fun NSData.toByteArray(): ByteArray {
         memcpy(pinned.addressOf(0), bytes, length)
     }
     return result
-}
-
-@OptIn(ExperimentalForeignApi::class)
-internal fun ByteArray.toNSData(): NSData {
-    if (isEmpty()) return NSData()
-    return usePinned { pinned ->
-        NSData.dataWithBytes(pinned.addressOf(0), size.toULong())
-    }!!
 }
 
 @OptIn(ExperimentalForeignApi::class)
@@ -123,10 +119,28 @@ actual class FileStorage actual constructor(context: PlatformContext) {
         data?.toByteArray()
     }
 
+    /**
+     * Writes via stdio rather than NSData.
+     *
+     * Constructing an NSData from a Kotlin ByteArray means one of several
+     * cinterop entry points whose exact signature moves between Kotlin/Native
+     * versions; fwrite is stable and needs no bridging.
+     */
     actual suspend fun writeFile(name: String, bytes: ByteArray): String =
         withContext(Dispatchers.Default) {
             val target = "$booksDirectory/$name"
-            bytes.toNSData().writeToFile(target, true)
+            val handle = fopen(target, "wb")
+            if (handle != null) {
+                try {
+                    if (bytes.isNotEmpty()) {
+                        bytes.usePinned { pinned ->
+                            fwrite(pinned.addressOf(0), 1.convert(), bytes.size.convert(), handle)
+                        }
+                    }
+                } finally {
+                    fclose(handle)
+                }
+            }
             target
         }
 
