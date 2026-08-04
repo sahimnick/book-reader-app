@@ -9,8 +9,6 @@ import com.bookreader.core.zip.RawInflater
 import com.bookreader.db.BookReaderDb
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.allocArrayOf
-import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -62,10 +60,14 @@ internal fun NSData.toByteArray(): ByteArray {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-internal fun ByteArray.toNSData(): NSData = memScoped {
-    NSData.create(bytes = allocArrayOf(this@toNSData), length = size.toULong())
+internal fun ByteArray.toNSData(): NSData {
+    if (isEmpty()) return NSData()
+    return usePinned { pinned ->
+        NSData.dataWithBytes(pinned.addressOf(0), size.toULong())
+    }!!
 }
 
+@OptIn(ExperimentalForeignApi::class)
 actual class FileStorage actual constructor(context: PlatformContext) {
 
     private val fileManager = NSFileManager.defaultManager

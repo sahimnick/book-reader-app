@@ -30,7 +30,7 @@ import java.io.File
 actual suspend fun openPdfDocument(context: PlatformContext, path: String): PdfDocumentSource? =
     withContext(Dispatchers.IO) {
         runCatching {
-            PDFBoxResourceLoader.init(context.applicationContext)
+            PDFBoxResourceLoader.init(context.androidContext.applicationContext)
             val file = File(path)
             if (!file.exists()) return@runCatching null
             AndroidPdfDocument(file)
@@ -72,8 +72,8 @@ private class AndroidPdfDocument(file: File) : PdfDocumentSource {
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         bitmap.asImageBitmap()
-                    }.getOrNull()
-                }
+                    }
+                }.getOrNull()
             }
         }
 
@@ -176,8 +176,8 @@ private class WordBoxStripper : PDFTextStripper() {
             val start = i
             var left = Float.MAX_VALUE
             var top = Float.MAX_VALUE
-            var right = Float.MIN_VALUE
-            var bottom = Float.MIN_VALUE
+            var right = -Float.MAX_VALUE
+            var bottom = -Float.MAX_VALUE
             val sb = StringBuilder()
 
             while (i < textPositions.size) {

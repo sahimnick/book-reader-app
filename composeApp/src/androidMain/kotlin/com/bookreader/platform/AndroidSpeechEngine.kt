@@ -32,7 +32,7 @@ private class AndroidSpeechEngine(context: PlatformContext) : SpeechEngine {
     @Volatile private var initialised = false
     private var pendingInit: ((Boolean) -> Unit)? = null
 
-    private val tts = TextToSpeech(context) { status ->
+    private val tts = TextToSpeech(context.androidContext) { status ->
         initialised = status == TextToSpeech.SUCCESS
         if (initialised) {
             _events.tryEmit(SpeechEvent.Ready)

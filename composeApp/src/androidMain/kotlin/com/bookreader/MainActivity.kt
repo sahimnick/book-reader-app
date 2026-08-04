@@ -8,11 +8,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import com.bookreader.platform.PlatformContext
 import com.bookreader.ui.App
 
 class BookReaderApplication : Application() {
     /** One container for the process; the reader and library share its state. */
-    val container: AppContainer by lazy { AppContainer(this) }
+    val container: AppContainer by lazy { AppContainer(PlatformContext(this)) }
 }
 
 class MainActivity : ComponentActivity() {

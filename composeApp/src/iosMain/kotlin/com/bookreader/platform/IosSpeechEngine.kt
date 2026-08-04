@@ -1,11 +1,13 @@
 package com.bookreader.platform
 
+import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
-import platform.AVFAudio.AVSpeechBoundaryImmediate
+import platform.AVFAudio.AVSpeechBoundary
 import platform.AVFAudio.AVSpeechSynthesisVoice
 import platform.AVFAudio.AVSpeechSynthesizer
 import platform.AVFAudio.AVSpeechSynthesizerDelegateProtocol
@@ -71,13 +73,13 @@ private class IosSpeechEngine : SpeechEngine {
 
         override fun speechSynthesizer(
             synthesizer: AVSpeechSynthesizer,
-            willSpeakRangeOfSpeechString: kotlinx.cinterop.CValue<NSRange>,
+            willSpeakRangeOfSpeechString: CValue<NSRange>,
             utterance: AVSpeechUtterance,
         ) {
             val id = currentId ?: return
-            kotlinx.cinterop.useContents<NSRange, Unit>(willSpeakRangeOfSpeechString) {
+            willSpeakRangeOfSpeechString.useContents {
                 val start = location.toInt()
-                val end = start + this.length.toInt()
+                val end = start + length.toInt()
                 _events.tryEmit(SpeechEvent.Range(id, start, end))
             }
         }
@@ -88,8 +90,9 @@ private class IosSpeechEngine : SpeechEngine {
         // Playback category keeps speech audible when the ring switch is silent,
         // which is what a reader expects from a read-aloud feature.
         runCatching {
-            AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayback, null)
-            AVAudioSession.sharedInstance().setActive(true, null)
+            val session = AVAudioSession.sharedInstance()
+            session.setCategory(AVAudioSessionCategoryPlayback, error = null)
+            session.setActive(true, error = null)
         }
     }
 
@@ -103,7 +106,7 @@ private class IosSpeechEngine : SpeechEngine {
             _events.tryEmit(SpeechEvent.Done(utteranceId))
             return
         }
-        if (synthesizer.speaking) synthesizer.stopSpeakingAtBoundary(AVSpeechBoundaryImmediate)
+        if (synthesizer.speaking) synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
 
         val utterance = AVSpeechUtterance.speechUtteranceWithString(text).apply {
             setRate(this@IosSpeechEngine.rate)
@@ -116,7 +119,7 @@ private class IosSpeechEngine : SpeechEngine {
     }
 
     override fun stop() {
-        if (synthesizer.speaking) synthesizer.stopSpeakingAtBoundary(AVSpeechBoundaryImmediate)
+        if (synthesizer.speaking) synthesizer.stopSpeakingAtBoundary(AVSpeechBoundary.AVSpeechBoundaryImmediate)
         currentUtterance = null
         currentId = null
     }

@@ -16,7 +16,15 @@ import java.io.File
 import java.util.UUID
 import java.util.zip.Inflater
 
-actual typealias PlatformContext = Context
+/**
+ * Carries the Android [Context].
+ *
+ * A `typealias` to `Context` would read better, but `expect class
+ * PlatformContext` is final while `Context` is abstract, and Kotlin rejects the
+ * modality mismatch. Wrapping keeps the expect declaration simple and leaves it
+ * instantiable on iOS, where there is nothing to carry.
+ */
+actual class PlatformContext(val androidContext: Context)
 
 actual fun currentTimeMillis(): Long = System.currentTimeMillis()
 
@@ -48,13 +56,13 @@ private object AndroidInflater : RawInflater {
 
 actual class DatabaseDriverFactory actual constructor(private val context: PlatformContext) {
     actual fun createDriver(): SqlDriver =
-        AndroidSqliteDriver(BookReaderDb.Schema, context, "bookreader.db")
+        AndroidSqliteDriver(BookReaderDb.Schema, context.androidContext, "bookreader.db")
 }
 
 actual class FileStorage actual constructor(private val context: PlatformContext) {
 
     private val booksDir: File
-        get() = File(context.filesDir, "books").apply { if (!exists()) mkdirs() }
+        get() = File(context.androidContext.filesDir, "books").apply { if (!exists()) mkdirs() }
 
     actual suspend fun importBook(sourceUri: String, suggestedName: String): String? =
         withContext(Dispatchers.IO) {
@@ -63,7 +71,7 @@ actual class FileStorage actual constructor(private val context: PlatformContext
                 val safeName = suggestedName.replace(Regex("[^A-Za-z0-9._\\-]"), "_")
                     .ifBlank { "book_${System.currentTimeMillis()}" }
                 val target = uniqueFile(safeName)
-                context.contentResolver.openInputStream(uri)?.use { input ->
+                context.androidContext.contentResolver.openInputStream(uri)?.use { input ->
                     target.outputStream().use { output -> input.copyTo(output) }
                 } ?: return@runCatching null
                 target.absolutePath

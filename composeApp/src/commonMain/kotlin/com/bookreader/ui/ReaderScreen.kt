@@ -250,7 +250,7 @@ private fun BlockView(
                 bitmap = bitmap,
                 contentDescription = block.text.takeIf { it.isNotBlank() },
                 modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FitWidth,
+                contentScale = ContentScale.FillWidth,
             )
         }
         return
@@ -370,7 +370,7 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
                             }
                         }
                     },
-                contentScale = ContentScale.FitWidth,
+                contentScale = ContentScale.FillWidth,
             )
         }
     }
