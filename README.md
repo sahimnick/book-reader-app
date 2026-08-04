@@ -87,8 +87,14 @@ compiled and embedded automatically — there is no separate Gradle step.
 `objectVersion 77`, and older Xcode rejects it outright with "the project
 cannot be opened because it is in a future Xcode project file format (77)".
 XcodeGen ignores the `objectVersion` option that would pin an older format, so
-the practical answer is to use a matching Xcode — or generate the project once
-on a machine that has one and commit the result.
+use a matching Xcode — or generate the project once on a machine that has one
+and commit the result.
+
+**`libsqlite3` must be linked.** SQLDelight's native driver reaches system
+SQLite through SQLiter's cinterop bindings, which declare `_sqlite3_*` without
+pulling in the library, so the app fails to link with a wall of undefined
+symbols. `-lsqlite3` is set both on the Kotlin framework and on the app target
+in `iosApp/project.yml`; keep it if you regenerate the project by hand.
 
 #### Producing a signed `.ipa`
 
