@@ -1,0 +1,21 @@
+build/
+.gradle/
+local.properties
+captures/
+.cxx/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+.DS_Store

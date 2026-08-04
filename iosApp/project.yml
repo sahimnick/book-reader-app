@@ -1,0 +1,51 @@
+# XcodeGen spec for the iOS host app.
+#
+# The Xcode project is generated rather than committed: a .xcodeproj is a large
+# machine-managed file that conflicts badly in review, and generating it keeps
+# the Kotlin framework build phase correct across Xcode versions.
+#
+#   brew install xcodegen
+#   cd iosApp && xcodegen generate
+#   open iosApp.xcodeproj
+name: iosApp
+options:
+  bundleIdPrefix: com.bookreader
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: iosApp
+    info:
+      path: iosApp/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bookreader.app
+        PRODUCT_NAME: Book Reader
+        INFOPLIST_FILE: iosApp/Info.plist
+        # Where Gradle writes the Kotlin framework.
+        FRAMEWORK_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -framework
+          - ComposeApp
+    preBuildScripts:
+      # Compiles the shared Kotlin module into ComposeApp.framework before Xcode
+      # links it. embedAndSignAppleFrameworkForXcode reads the SDK/arch/config
+      # that Xcode passes in, so one script covers device and simulator.
+      - name: Build Kotlin framework
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+        basedOnDependencyAnalysis: false

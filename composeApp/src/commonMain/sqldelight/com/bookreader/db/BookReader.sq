@@ -1,0 +1,138 @@
+-- Library ---------------------------------------------------------------
+
+CREATE TABLE book (
+    id            TEXT    NOT NULL PRIMARY KEY,
+    title         TEXT    NOT NULL,
+    author        TEXT,
+    format        TEXT    NOT NULL,   -- 'EPUB' or 'PDF'
+    filePath      TEXT    NOT NULL,
+    coverPath     TEXT,
+    unitCount     INTEGER NOT NULL DEFAULT 0,
+    addedAt       INTEGER NOT NULL,
+    lastOpenedAt  INTEGER
+);
+
+CREATE INDEX book_last_opened ON book(lastOpenedAt DESC);
+
+insertBook:
+INSERT OR REPLACE INTO book(id, title, author, format, filePath, coverPath, unitCount, addedAt, lastOpenedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAllBooks:
+SELECT * FROM book ORDER BY COALESCE(lastOpenedAt, addedAt) DESC;
+
+selectBook:
+SELECT * FROM book WHERE id = ?;
+
+selectBookByPath:
+SELECT * FROM book WHERE filePath = ?;
+
+touchBook:
+UPDATE book SET lastOpenedAt = ? WHERE id = ?;
+
+deleteBook:
+DELETE FROM book WHERE id = ?;
+
+-- Reading position -------------------------------------------------------
+
+CREATE TABLE reading_progress (
+    bookId       TEXT    NOT NULL PRIMARY KEY,
+    unitIndex    INTEGER NOT NULL,   -- EPUB spine index, or PDF page number
+    blockIndex   INTEGER NOT NULL DEFAULT 0,
+    charOffset   INTEGER NOT NULL DEFAULT 0,
+    updatedAt    INTEGER NOT NULL
+);
+
+upsertProgress:
+INSERT OR REPLACE INTO reading_progress(bookId, unitIndex, blockIndex, charOffset, updatedAt)
+VALUES (?, ?, ?, ?, ?);
+
+selectProgress:
+SELECT * FROM reading_progress WHERE bookId = ?;
+
+deleteProgress:
+DELETE FROM reading_progress WHERE bookId = ?;
+
+-- Bundled / imported dictionary -----------------------------------------
+
+CREATE TABLE dictionary_entry (
+    headword       TEXT NOT NULL,
+    partOfSpeech   TEXT NOT NULL DEFAULT 'other',
+    pronunciation  TEXT,
+    english        TEXT NOT NULL DEFAULT '',
+    persian        TEXT NOT NULL DEFAULT '',   -- '|' separated
+    examples       TEXT NOT NULL DEFAULT '',   -- '|' separated
+    synonyms       TEXT NOT NULL DEFAULT ''    -- '|' separated
+);
+
+CREATE INDEX dictionary_headword ON dictionary_entry(headword);
+
+insertDictionaryEntry:
+INSERT INTO dictionary_entry(headword, partOfSpeech, pronunciation, english, persian, examples, synonyms)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+lookupWord:
+SELECT * FROM dictionary_entry WHERE headword = ? ;
+
+dictionarySize:
+SELECT count(*) FROM dictionary_entry;
+
+clearDictionary:
+DELETE FROM dictionary_entry;
+
+-- Flashcards -------------------------------------------------------------
+
+CREATE TABLE flashcard (
+    id            TEXT    NOT NULL PRIMARY KEY,
+    word          TEXT    NOT NULL,
+    headword      TEXT    NOT NULL,
+    pronunciation TEXT,
+    english       TEXT    NOT NULL DEFAULT '',
+    persian       TEXT    NOT NULL DEFAULT '',
+    example       TEXT    NOT NULL DEFAULT '',
+    -- Where the word was met, so the card can link back to the book.
+    sourceBookId  TEXT,
+    sourceTitle   TEXT,
+    sourceContext TEXT    NOT NULL DEFAULT '',
+    createdAt     INTEGER NOT NULL,
+    -- SM-2 scheduling state
+    repetitions   INTEGER NOT NULL DEFAULT 0,
+    intervalDays  INTEGER NOT NULL DEFAULT 0,
+    easeFactor    REAL    NOT NULL DEFAULT 2.5,
+    dueAtMillis   INTEGER NOT NULL DEFAULT 0,
+    lapses        INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX flashcard_due ON flashcard(dueAtMillis);
+CREATE UNIQUE INDEX flashcard_word ON flashcard(word);
+
+insertFlashcard:
+INSERT OR REPLACE INTO flashcard(
+    id, word, headword, pronunciation, english, persian, example,
+    sourceBookId, sourceTitle, sourceContext, createdAt,
+    repetitions, intervalDays, easeFactor, dueAtMillis, lapses
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAllFlashcards:
+SELECT * FROM flashcard ORDER BY createdAt DESC;
+
+selectDueFlashcards:
+SELECT * FROM flashcard WHERE dueAtMillis <= ? OR (repetitions = 0 AND intervalDays = 0)
+ORDER BY dueAtMillis ASC;
+
+selectFlashcardByWord:
+SELECT * FROM flashcard WHERE word = ?;
+
+countFlashcards:
+SELECT count(*) FROM flashcard;
+
+countDueFlashcards:
+SELECT count(*) FROM flashcard WHERE dueAtMillis <= ? OR (repetitions = 0 AND intervalDays = 0);
+
+updateSchedule:
+UPDATE flashcard
+SET repetitions = ?, intervalDays = ?, easeFactor = ?, dueAtMillis = ?, lapses = ?
+WHERE id = ?;
+
+deleteFlashcard:
+DELETE FROM flashcard WHERE id = ?;
