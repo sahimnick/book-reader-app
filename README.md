@@ -35,7 +35,7 @@ yourself on a Mac — see [iOS](#ios).
 | Platform-independent core | **115 tests passing** in CI on every push |
 | Android APK | **Compiles and packages** in CI (debug + release) |
 | iOS shared framework | **Compiles** in CI for device and simulator targets |
-| iOS Xcode host app | Best-effort in CI, currently failing to link — build it in Xcode |
+| iOS Xcode host app | **Builds** unsigned for the simulator in CI |
 | Anything at runtime | **Not verified — nothing has run on a device** |
 
 That last row matters. The core logic is genuinely tested, but the UI, the
@@ -83,13 +83,11 @@ Select a simulator or device and press ⌘R. The project's pre-build script runs
 `:composeApp:embedAndSignAppleFrameworkForXcode`, so the Kotlin framework is
 compiled and embedded automatically — there is no separate Gradle step.
 
-**Known issue:** the Xcode host app does not currently link in CI, while the
-shared Kotlin framework compiles fine for both targets. The fault is in the
-generated project's framework wiring (`iosApp/project.yml` — most likely
-`FRAMEWORK_SEARCH_PATHS` not matching where the embed task actually puts
-`ComposeApp.framework`), not in the app code. Xcode reports the real linker
-error immediately and interactively, so the fastest fix is to open the project
-and adjust the search path or the run-script phase there.
+**If Xcode refuses to open the generated project** with "the project cannot be
+opened because it is in a future Xcode project file format", your XcodeGen is
+newer than your Xcode. `iosApp/project.yml` pins `objectVersion: 54`, which
+Xcode 13 through 16 all read; raise it if you are on something newer and want
+the current format.
 
 #### Producing a signed `.ipa`
 

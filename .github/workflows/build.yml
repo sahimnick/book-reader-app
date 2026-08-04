@@ -69,16 +69,10 @@ jobs:
           brew install xcodegen
           cd iosApp && xcodegen generate
 
-      # Best-effort, and deliberately non-blocking.
-      #
-      # The job's real contract is the step above: the shared Kotlin must
-      # compile for both iOS targets. Linking the Xcode host app is a weaker
-      # signal — it cannot be code-signed on a CI runner, so it exercises a
-      # configuration nobody ships, and a failure here says nothing about
-      # whether the app code is correct. Run it for the diagnostics, but do not
-      # let it gate the job. Build it in Xcode on a Mac to get a real answer.
-      - name: Build unsigned app for the simulator (best-effort)
-        continue-on-error: true
+      # Unsigned simulator build. CI has no signing certificate, so this cannot
+      # produce an installable .ipa — but it does prove the generated Xcode
+      # project opens, links against the Kotlin framework, and compiles.
+      - name: Build unsigned app for the simulator
         run: |
           set +e
           xcodebuild \
