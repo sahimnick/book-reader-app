@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.bookreader.AppContainer
 import com.bookreader.core.srs.ReviewGrade
 import com.bookreader.core.srs.SpacedRepetition
+import com.bookreader.core.srs.StudySession
 import com.bookreader.data.Flashcard
 import kotlinx.coroutines.launch
 
@@ -54,14 +55,16 @@ import kotlinx.coroutines.launch
 @Composable
 fun FlashcardsScreen(container: AppContainer, onChanged: () -> Unit) {
     var cards by remember { mutableStateOf<List<Flashcard>>(emptyList()) }
-    var queue by remember { mutableStateOf<List<Flashcard>>(emptyList()) }
+    var session by remember { mutableStateOf<StudySession<Flashcard>?>(null) }
+    var currentCard by remember { mutableStateOf<Flashcard?>(null) }
+    var dueCards by remember { mutableStateOf<List<Flashcard>>(emptyList()) }
     var studying by remember { mutableStateOf(false) }
     var revealed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     suspend fun reload() {
         cards = container.flashcards.all()
-        queue = container.flashcards.due()
+        dueCards = container.flashcards.due()
     }
 
     LaunchedEffect(Unit) { reload() }
@@ -71,6 +74,13 @@ fun FlashcardsScreen(container: AppContainer, onChanged: () -> Unit) {
             title = { Text(if (studying) "Study" else "Flashcards") },
             actions = {
                 if (studying) {
+                    session?.let {
+                        Text(
+                            "${it.completed} / ${it.total}",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
                     TextButton(onClick = { studying = false; revealed = false }) { Text("Done") }
                 }
             },
@@ -78,7 +88,7 @@ fun FlashcardsScreen(container: AppContainer, onChanged: () -> Unit) {
 
         when {
             studying -> {
-                val card = queue.firstOrNull()
+                val card = currentCard
                 if (card == null) {
                     Box(Modifier.fillMaxSize(), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -98,11 +108,12 @@ fun FlashcardsScreen(container: AppContainer, onChanged: () -> Unit) {
                         onReveal = { revealed = true },
                         onGrade = { grade ->
                             scope.launch {
+                                // SM-2 sets the next *day*; the session queue
+                                // decides whether the card returns before the
+                                // sitting ends. A failed card comes back.
                                 container.flashcards.grade(card, grade)
                                 revealed = false
-                                // Drop the graded card; a lapse returns tomorrow,
-                                // not later in the same session.
-                                queue = queue.drop(1)
+                                currentCard = session?.grade(grade)
                                 cards = container.flashcards.all()
                                 onChanged()
                             }
@@ -134,12 +145,18 @@ fun FlashcardsScreen(container: AppContainer, onChanged: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "${cards.size} cards · ${queue.size} due",
+                        "${cards.size} cards · ${dueCards.size} due",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Button(
-                        onClick = { studying = true; revealed = false },
-                        enabled = queue.isNotEmpty(),
+                        onClick = {
+                            val fresh = StudySession(dueCards) { it.id }
+                            session = fresh
+                            currentCard = fresh.current()
+                            studying = true
+                            revealed = false
+                        },
+                        enabled = dueCards.isNotEmpty(),
                     ) { Text("Study now") }
                 }
 
