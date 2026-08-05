@@ -37,6 +37,8 @@ actual suspend fun openPdfDocument(context: PlatformContext, path: String): PdfD
  * tap-to-look-up possible on a PDF.
  */
 @OptIn(ExperimentalForeignApi::class)
+private const val OCR_RENDER_WIDTH = 2200.0
+
 private class IosPdfDocument(private val document: PDFDocument) : PdfDocumentSource {
 
     override val pageCount: Int = document.pageCount.toInt()
@@ -68,10 +70,15 @@ private class IosPdfDocument(private val document: PDFDocument) : PdfDocumentSou
             }.getOrNull()
         }
 
+    /** Pages whose text came from OCR; recognition is far too slow to repeat. */
+    private val ocrCache = mutableMapOf<Int, PdfPageText>()
+
     override suspend fun pageText(pageIndex: Int): PdfPageText = withContext(Dispatchers.Default) {
+        ocrCache[pageIndex]?.let { return@withContext it }
         val page = document.pageAtIndex(pageIndex.toULong()) ?: return@withContext PdfPageText.Empty
-        val text = page.string ?: return@withContext PdfPageText.Empty
-        if (text.isBlank()) return@withContext PdfPageText.Empty
+        val text = page.string
+        // A scanned page has no text layer; recognise it instead of giving up.
+        if (text.isNullOrBlank()) return@withContext ocrPage(pageIndex)
 
         PdfPageText(
             document = ContentDocument(
@@ -189,6 +196,50 @@ private class IosPdfDocument(private val document: PDFDocument) : PdfDocumentSou
             offset += joined.length + 1
         }
         return blocks
+    }
+
+    /**
+     * Recognises a rendered page when the PDF carries no text layer.
+     *
+     * Rendered wide on purpose: recognition accuracy tracks resolution, and a
+     * page rendered at screen width loses small type. Cached, because
+     * recognition costs far more than rendering and the reader returns to a
+     * page whenever it scrolls or replays.
+     */
+    private suspend fun ocrPage(pageIndex: Int): PdfPageText {
+        val page = document.pageAtIndex(pageIndex.toULong()) ?: return PdfPageText.Empty
+        val bounds = page.boundsForBox(displayBox)
+        var pageWidth = 0.0
+        var pageHeight = 0.0
+        bounds.useContents {
+            pageWidth = size.width
+            pageHeight = size.height
+        }
+        if (pageWidth <= 0.0 || pageHeight <= 0.0) return PdfPageText.Empty
+
+        val targetHeight = OCR_RENDER_WIDTH * (pageHeight / pageWidth)
+        val size: CValue<CGSize> = cValue {
+            width = OCR_RENDER_WIDTH
+            height = targetHeight
+        }
+        val image = page.thumbnailOfSize(size, forBox = displayBox)
+
+        val recognised = IosOcr.recognize(image, "page-$pageIndex")
+        val result = PdfPageText(
+            document = recognised.document,
+            words = recognised.words.map {
+                PdfWordBox(
+                    text = it.text,
+                    left = it.left,
+                    top = it.top,
+                    right = it.right,
+                    bottom = it.bottom,
+                    charOffset = it.charOffset,
+                )
+            },
+        )
+        ocrCache[pageIndex] = result
+        return result
     }
 
     override fun close() = Unit
