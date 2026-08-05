@@ -79,6 +79,31 @@ object AiTasks {
 
     // --- Chapter recap ----------------------------------------------------
 
+    /**
+     * The stretch of story to recap, given chapters in reading order.
+     *
+     * "What happened so far" means the reader's most recent reading, so when the
+     * chapters run past the budget it is the *oldest* text that is dropped, not
+     * the newest. The kept text is then advanced to the next sentence boundary,
+     * because a recap that begins halfway through a clause reads as though a
+     * page is missing and invites the model to invent the missing half.
+     */
+    fun recapWindow(chapters: List<String>, budget: Int = MAX_RECAP_CHARS): String {
+        val joined = chapters.filter { it.isNotBlank() }.joinToString("\n\n") { it.trim() }
+        if (joined.length <= budget) return joined
+
+        val tail = joined.substring(joined.length - budget)
+        // Look for a sentence end in the first quarter; beyond that, cutting
+        // more text costs more than the ragged start it would fix.
+        val limit = tail.length / 4
+        for (i in 0 until limit) {
+            if (tail[i] in ".!?" && i + 1 < tail.length && tail[i + 1].isWhitespace()) {
+                return tail.substring(i + 1).trimStart()
+            }
+        }
+        return tail.trimStart()
+    }
+
     fun recapPrompt(chapterText: String): String = buildString {
         append("Summarise what happens in this chapter for a reader returning ")
         append("after a break. Four sentences at most. Do not reveal anything ")

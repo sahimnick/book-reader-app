@@ -259,6 +259,18 @@ private fun StudyCard(
                 }
 
                 if (!revealed) {
+                    // The cloze belongs on the front: it is the sentence the
+                    // word was met in with the word removed, so it prompts
+                    // recall without giving the answer away.
+                    if (card.cloze.isNotBlank()) {
+                        Spacer(Modifier.height(18.dp))
+                        Text(
+                            card.cloze,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                     Spacer(Modifier.height(24.dp))
                     Text(
                         "Tap to reveal",
@@ -289,6 +301,14 @@ private fun StudyCard(
                             card.example,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    if (card.mnemonic.isNotBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            card.mnemonic,
+                            style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
                         )
                     }

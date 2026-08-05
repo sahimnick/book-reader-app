@@ -90,6 +90,11 @@ CREATE TABLE flashcard (
     english       TEXT    NOT NULL DEFAULT '',
     persian       TEXT    NOT NULL DEFAULT '',
     example       TEXT    NOT NULL DEFAULT '',
+    -- Generated study material: the book's own sentence with the word blanked
+    -- out, and a hook linking the English and the Persian. Both stay empty
+    -- unless the reader asks for them.
+    cloze         TEXT    NOT NULL DEFAULT '',
+    mnemonic      TEXT    NOT NULL DEFAULT '',
     -- Where the word was met, so the card can link back to the book.
     sourceBookId  TEXT,
     sourceTitle   TEXT,
@@ -109,9 +114,13 @@ CREATE UNIQUE INDEX flashcard_word ON flashcard(word);
 insertFlashcard:
 INSERT OR REPLACE INTO flashcard(
     id, word, headword, pronunciation, english, persian, example,
+    cloze, mnemonic,
     sourceBookId, sourceTitle, sourceContext, createdAt,
     repetitions, intervalDays, easeFactor, dueAtMillis, lapses
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateGeneratedMaterial:
+UPDATE flashcard SET cloze = ?, mnemonic = ?, example = ? WHERE id = ?;
 
 selectAllFlashcards:
 SELECT * FROM flashcard ORDER BY createdAt DESC;

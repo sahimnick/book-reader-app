@@ -1,0 +1,8 @@
+-- Version 1 -> 2: generated study material on flashcards.
+--
+-- Existing readers already have cards and a reading position they should not
+-- lose to a schema change, so the columns are added rather than the table
+-- recreated. Both default to empty, which is exactly what an ungenerated card
+-- looks like, so rows written before this migration stay valid.
+ALTER TABLE flashcard ADD COLUMN cloze TEXT NOT NULL DEFAULT '';
+ALTER TABLE flashcard ADD COLUMN mnemonic TEXT NOT NULL DEFAULT '';

@@ -31,12 +31,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -84,6 +87,7 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsState()
     var showToc by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
+    var showAssistantMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     // Follow the read-aloud position so the highlighted sentence stays visible.
@@ -108,6 +112,39 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    // Hidden without a key: an action that can only fail is
+                    // worse than no action at all.
+                    if (state.assistantAvailable) {
+                        IconButton(onClick = { showAssistantMenu = true }) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = "Reading assistant")
+                        }
+                        DropdownMenu(
+                            expanded = showAssistantMenu,
+                            onDismissRequest = { showAssistantMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("What happened so far") },
+                                onClick = {
+                                    showAssistantMenu = false
+                                    viewModel.requestRecap()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Ask about this passage") },
+                                onClick = {
+                                    showAssistantMenu = false
+                                    viewModel.startQuestion()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Translate this paragraph") },
+                                onClick = {
+                                    showAssistantMenu = false
+                                    viewModel.translateParagraph()
+                                },
+                            )
+                        }
+                    }
                     if (viewModel.tableOfContents.isNotEmpty()) {
                         IconButton(onClick = { showToc = true }) {
                             Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Contents")
@@ -162,7 +199,7 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
                                 localRange(block, r.first, r.last + 1)
                             },
                             imageBytes = block.imageHref?.let { viewModel.epubResource(it) },
-                            onWordTap = { offset -> viewModel.lookupWord(block.text, offset) },
+                            onWordTap = { offset -> viewModel.lookupWord(index, block.text, offset) },
                             onLongPress = { viewModel.playFromBlock(index) },
                         )
                     }
@@ -175,9 +212,20 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
         LookupSheet(
             result = result,
             isLoading = state.isLookingUp,
+            assistantAvailable = state.assistantAvailable,
             onSave = viewModel::saveCurrentLookup,
             onSpeak = { viewModel.lookup(result.entry.queried, result.context) },
+            onGenerate = viewModel::generateStudyMaterial,
+            onTranslateContext = viewModel::translateContext,
             onDismiss = viewModel::dismissLookup,
+        )
+    }
+
+    state.assistant?.let { panel ->
+        AssistantSheet(
+            panel = panel,
+            onAsk = viewModel::askQuestion,
+            onDismiss = viewModel::dismissAssistant,
         )
     }
 
@@ -419,7 +467,10 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
                                 onDragEnd = {
                                     val phrase = selection.joinToString(" ") { it.text }.trim()
                                     if (phrase.isNotEmpty()) {
-                                        viewModel.lookup(phrase, phrase)
+                                        viewModel.lookupPdfWord(
+                                            phrase,
+                                            selection.first().charOffset,
+                                        )
                                     }
                                 },
                                 onDragCancel = { selection = emptyList() },
@@ -438,7 +489,7 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
                                     it.contains(tap.x / w, tap.y / h)
                                 }
                                 if (hit != null) {
-                                    viewModel.lookup(hit.text, state.document.flattenedText.take(300))
+                                    viewModel.lookupPdfWord(hit.text, hit.charOffset)
                                 }
                             }
                         },

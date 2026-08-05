@@ -1,5 +1,6 @@
 package com.bookreader.data
 
+import com.bookreader.core.ai.GeneratedCard
 import com.bookreader.core.dictionary.DictionaryProvider
 import com.bookreader.core.dictionary.DictionaryTsv
 import com.bookreader.core.dictionary.PartOfSpeech
@@ -209,6 +210,10 @@ data class Flashcard(
     val english: String,
     val persian: String,
     val example: String,
+    /** The book's sentence with the word blanked out; empty until generated. */
+    val cloze: String = "",
+    /** A memory hook bridging the two languages; empty until generated. */
+    val mnemonic: String = "",
     val sourceBookId: String?,
     val sourceTitle: String?,
     val sourceContext: String,
@@ -254,17 +259,20 @@ class FlashcardRepository(private val db: BookReaderDb) {
     ): Flashcard = withContext(Dispatchers.Default) {
         val chosen = sense ?: entry.senses.firstOrNull()
         val word = entry.queried.trim().lowercase()
-        val existingId = db.bookReaderQueries.selectFlashcardByWord(word)
-            .executeAsOneOrNull()?.id
+        val existing = db.bookReaderQueries.selectFlashcardByWord(word).executeAsOneOrNull()
 
         val card = Flashcard(
-            id = existingId ?: randomUuid(),
+            id = existing?.id ?: randomUuid(),
             word = word,
             headword = entry.headword,
             pronunciation = entry.pronunciation,
             english = chosen?.english.orEmpty(),
             persian = chosen?.persian?.joinToString("، ").orEmpty(),
             example = chosen?.examples?.firstOrNull().orEmpty(),
+            // Re-saving replaces the definition, but generated material was
+            // paid for and is still about the same word, so it survives.
+            cloze = existing?.cloze.orEmpty(),
+            mnemonic = existing?.mnemonic.orEmpty(),
             sourceBookId = sourceBookId,
             sourceTitle = sourceTitle,
             sourceContext = sourceContext,
@@ -279,6 +287,8 @@ class FlashcardRepository(private val db: BookReaderDb) {
             english = card.english,
             persian = card.persian,
             example = card.example,
+            cloze = card.cloze,
+            mnemonic = card.mnemonic,
             sourceBookId = card.sourceBookId,
             sourceTitle = card.sourceTitle,
             sourceContext = card.sourceContext,
@@ -291,6 +301,31 @@ class FlashcardRepository(private val db: BookReaderDb) {
         )
         card
     }
+
+    /**
+     * Attaches generated study material to an existing card.
+     *
+     * The generated example only replaces the dictionary's when there was none:
+     * a sentence chosen by a lexicographer is usually the better one, and the
+     * generated one is there to fill a gap rather than to compete.
+     */
+    suspend fun attachGenerated(word: String, generated: GeneratedCard): Flashcard? =
+        withContext(Dispatchers.Default) {
+            val row = db.bookReaderQueries.selectFlashcardByWord(word.trim().lowercase())
+                .executeAsOneOrNull() ?: return@withContext null
+            val example = row.example.ifBlank { generated.example }
+            db.bookReaderQueries.updateGeneratedMaterial(
+                cloze = generated.cloze,
+                mnemonic = generated.mnemonic,
+                example = example,
+                id = row.id,
+            )
+            toCard(row).copy(
+                cloze = generated.cloze,
+                mnemonic = generated.mnemonic,
+                example = example,
+            )
+        }
 
     /** Applies a review grade and persists the new schedule. */
     suspend fun grade(card: Flashcard, grade: ReviewGrade): Flashcard =
@@ -319,6 +354,8 @@ class FlashcardRepository(private val db: BookReaderDb) {
         english = row.english,
         persian = row.persian,
         example = row.example,
+        cloze = row.cloze,
+        mnemonic = row.mnemonic,
         sourceBookId = row.sourceBookId,
         sourceTitle = row.sourceTitle,
         sourceContext = row.sourceContext,

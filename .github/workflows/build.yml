@@ -135,8 +135,8 @@ jobs:
           failed=$(grep -o '[0-9]*' /tmp/f.txt | awk '{s+=$1} END {print s+0}')
           errors=$(grep -o '[0-9]*' /tmp/e.txt | awk '{s+=$1} END {print s+0}')
           echo "INSTRUMENTED RESULTS: tests=$total failures=$failed errors=$errors"
-          if [ "$total" -lt 12 ]; then
-            echo "Expected at least 12 instrumented tests, saw $total."
+          if [ "$total" -lt 13 ]; then
+            echo "Expected at least 13 instrumented tests, saw $total."
             exit 1
           fi
           if [ "$failed" -ne 0 ] || [ "$errors" -ne 0 ]; then
@@ -165,3 +165,65 @@ jobs:
           echo "----- failures, if any -----"
           find composeApp/build/outputs -name '*.xml' -path '*androidTest-results*' \
             -exec grep -hB3 -E '<(failure|error)' {} + | head -40 || echo "(none)"
+
+  ios:
+    # Apple's toolchain is macOS-only; this job cannot run on a Linux runner.
+    # macos-15 ships Xcode 16, which is required to read the project format
+    # current XcodeGen emits (objectVersion 77). Xcode 15.4 on macos-14 refuses
+    # to open it outright.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          # The cache save/cleanup post-action logs ~150 lines at --info after
+          # every step, which buries the xcodebuild diagnostics this job exists
+          # to surface. Correctness of the build matters more here than a warm
+          # cache.
+          cache-disabled: true
+
+      - name: Compile Kotlin for iOS
+        run: ./gradlew :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64 --no-daemon
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          cd iosApp && xcodegen generate
+
+      # Unsigned simulator build. CI has no signing certificate, so this cannot
+      # produce an installable .ipa — but it does prove the generated Xcode
+      # project opens, links against the Kotlin framework, and compiles.
+      - name: Build unsigned app for the simulator
+        run: |
+          set +e
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build > /tmp/xcodebuild.log 2>&1
+          status=$?
+
+          # Surface just the diagnostics. xcodebuild is extremely verbose and
+          # the surrounding Gradle output buries the one line that matters, so
+          # print the errors on their own before anything else.
+          echo "===== xcodebuild diagnostics (exit $status) ====="
+          grep -nE "error:|ld: |framework not found|clang: error|Undefined symbol|\*\* BUILD FAILED" \
+            /tmp/xcodebuild.log | head -40 || echo "(no matching diagnostic lines)"
+          echo "===== last 60 lines ====="
+          tail -60 /tmp/xcodebuild.log
+          exit $status
+
+      # The full log, so the linker failure can be diagnosed without re-running.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-xcodebuild-log
+          path: /tmp/xcodebuild.log
+          if-no-files-found: warn

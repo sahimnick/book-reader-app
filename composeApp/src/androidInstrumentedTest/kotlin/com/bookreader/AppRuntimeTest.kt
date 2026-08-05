@@ -4,6 +4,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.lifecycle.Lifecycle
+import com.bookreader.core.ai.GeneratedCard
 import com.bookreader.core.srs.ReviewGrade
 import com.bookreader.data.BookFormat
 import com.bookreader.platform.PlatformContext
@@ -86,6 +87,57 @@ class AppRuntimeTest {
 
         app.flashcards.delete(card.id)
         assertTrue(!app.flashcards.contains("word"), "card was not deleted")
+    }
+
+    /**
+     * The generated-material columns against real SQLite.
+     *
+     * They arrived with a schema migration, so this is the check that the new
+     * columns exist, round-trip, and survive the card being re-saved — none of
+     * which the JVM core tests can see, because the core has no database.
+     */
+    @Test
+    fun generated_study_material_is_stored_on_the_card() = runBlocking {
+        val app = container()
+        app.warmUp()
+
+        val entry = app.dictionary.lookup("cold")
+        assertNotNull(entry)
+        app.flashcards.save(
+            entry = entry,
+            sense = entry.senses.firstOrNull(),
+            sourceBookId = null,
+            sourceTitle = "Runtime test",
+            sourceContext = "The morning was cold.",
+        )
+
+        val generated = GeneratedCard(
+            cloze = "The morning was ___.",
+            example = "The water is cold in winter.",
+            mnemonic = "cold — سرد",
+        )
+        val updated = app.flashcards.attachGenerated("cold", generated)
+        assertNotNull(updated, "attachGenerated found no card to attach to")
+        assertEquals("The morning was ___.", updated.cloze)
+        assertEquals("cold — سرد", updated.mnemonic)
+
+        val reloaded = app.flashcards.all().first { it.word == "cold" }
+        assertEquals("The morning was ___.", reloaded.cloze, "cloze did not survive the round trip")
+        assertEquals("cold — سرد", reloaded.mnemonic)
+
+        // Re-saving replaces the definition; generated material was paid for
+        // and must not be collateral damage.
+        app.flashcards.save(
+            entry = entry,
+            sense = entry.senses.firstOrNull(),
+            sourceBookId = null,
+            sourceTitle = "Runtime test",
+            sourceContext = "A cold reception.",
+        )
+        val afterResave = app.flashcards.all().first { it.word == "cold" }
+        assertEquals("The morning was ___.", afterResave.cloze, "re-saving wiped the cloze")
+
+        app.flashcards.delete(afterResave.id)
     }
 
     @Test

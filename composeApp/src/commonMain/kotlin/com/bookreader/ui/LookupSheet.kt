@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AssistChip
@@ -20,7 +21,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,8 +46,11 @@ import com.bookreader.reader.LookupResult
 fun LookupSheet(
     result: LookupResult,
     isLoading: Boolean,
+    assistantAvailable: Boolean,
     onSave: (Sense?) -> Unit,
     onSpeak: () -> Unit,
+    onGenerate: () -> Unit,
+    onTranslateContext: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val entry = result.entry
@@ -129,8 +135,96 @@ fun LookupSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
+
+                // A word can be clear and the sentence still opaque, so the
+                // whole sentence is one tap away from the word.
+                if (assistantAvailable) {
+                    val persian = result.contextPersian
+                    if (persian != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            persian,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Right,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        TextButton(
+                            onClick = onTranslateContext,
+                            enabled = !result.isTranslating,
+                        ) {
+                            Text(
+                                if (result.isTranslating) "Translating…"
+                                else "Translate this sentence",
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (assistantAvailable && !entry.isEmpty) {
+                Spacer(Modifier.height(18.dp))
+                StudyMaterial(result, onGenerate)
             }
         }
+    }
+}
+
+/**
+ * Generated study material for the word on screen.
+ *
+ * Offered rather than automatic: every generation is a paid call, and most
+ * look-ups are a passing curiosity rather than a word the reader intends to
+ * learn. Once the word is a card, the material is attached to it.
+ */
+@Composable
+private fun StudyMaterial(result: LookupResult, onGenerate: () -> Unit) {
+    val generated = result.generated
+
+    if (generated == null) {
+        OutlinedButton(onClick = onGenerate, enabled = !result.isGenerating) {
+            if (result.isGenerating) {
+                CircularProgressIndicator(Modifier.height(16.dp))
+                Text("  Writing study material…")
+            } else {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                Text("  Write study material")
+            }
+        }
+        return
+    }
+
+    Text("Study material", style = MaterialTheme.typography.labelMedium)
+    Spacer(Modifier.height(6.dp))
+
+    if (generated.cloze.isNotBlank()) {
+        Text(generated.cloze, style = MaterialTheme.typography.bodyLarge)
+    }
+    if (generated.example.isNotBlank()) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "• ${generated.example}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.outline,
+        )
+    }
+    if (generated.mnemonic.isNotBlank()) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            generated.mnemonic,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = if (isRtlText(generated.mnemonic)) TextAlign.Right else TextAlign.Start,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    if (result.isSaved) {
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Added to your card for this word.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
     }
 }
 

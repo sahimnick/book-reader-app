@@ -117,6 +117,51 @@ class AiTasksTest {
         assertTrue(prompt.contains("What does this mean?"), "the question must survive truncation")
     }
 
+    // --- Recap window ------------------------------------------------------
+
+    @Test
+    fun `a short book is recapped whole`() {
+        val window = AiTasks.recapWindow(listOf("Chapter one.", "Chapter two."))
+        assertTrue(window.startsWith("Chapter one."))
+        assertTrue(window.endsWith("Chapter two."))
+    }
+
+    @Test
+    fun `blank chapters are left out`() {
+        assertEquals("One.\n\nTwo.", AiTasks.recapWindow(listOf("One.", "   ", "Two.")))
+    }
+
+    @Test
+    fun `an over-long book keeps the most recent reading`() {
+        val window = AiTasks.recapWindow(
+            listOf("old ".repeat(4_000), "The ending happened here."),
+        )
+        assertTrue(window.length <= AiTasks.MAX_RECAP_CHARS)
+        assertTrue(
+            window.endsWith("The ending happened here."),
+            "the newest text is the part worth recapping",
+        )
+    }
+
+    @Test
+    fun `the window starts at a sentence boundary`() {
+        // Budget lands mid-sentence on purpose: the cut should move forward to
+        // the next full stop rather than open halfway through a clause.
+        val text = "She opened the door slowly. " .repeat(50)
+        val window = AiTasks.recapWindow(listOf(text), budget = 120)
+        assertTrue(
+            window.startsWith("She opened"),
+            "expected a clean sentence start, got: ${window.take(40)}",
+        )
+        assertTrue(window.length <= 120)
+    }
+
+    @Test
+    fun `text with no sentence end is still returned`() {
+        val window = AiTasks.recapWindow(listOf("a".repeat(500)), budget = 100)
+        assertEquals(100, window.length)
+    }
+
     @Test
     fun `the translation prompt asks for the translation alone`() {
         val prompt = AiTasks.translationPrompt("The morning was cold.")
