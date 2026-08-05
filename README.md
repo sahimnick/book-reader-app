@@ -9,19 +9,35 @@ with a single Compose Multiplatform UI shared by both platforms.
   is read, and the current word highlighted within it where the engine supports
   it.
 - **Look up** any word or phrase by tapping it — English definition, Persian
-  meaning, IPA pronunciation and letter-by-letter spelling.
+  meaning, IPA pronunciation and letter-by-letter spelling. Tapping "up" in
+  "he gave up" answers *give up*, not *up*.
 - **Study** the words you saved as flashcards, scheduled by SM-2 spaced
   repetition.
+- **Read scanned PDFs** — pages with no text layer are recognised on the device,
+  which makes them speakable, tappable and selectable like any other page.
+- **See which words you will not know** before you meet them, from a reading
+  profile built out of what you have looked up before.
+
+With your own API key, in Settings, four more:
+
+- **Sense in context** — what the word means *in this sentence*, rather than
+  every meaning it has ever had.
+- **Study material** — a cloze from the sentence you met the word in, a simpler
+  second example, and a mnemonic linking the English and the Persian.
+- **Ask about a passage**, and **"what happened so far"** when you come back to
+  a book after a fortnight.
+- **A paragraph in Persian**, where the dictionary only gives you words.
 
 ---
 
 ## Getting the app
 
-**The Android APK is built by CI, not committed here.** Go to
-[Actions](../../actions), open the latest successful **Build** run, and download
-the **`android-apk`** artifact — it contains both the debug and release APKs.
-The release APK is signed with the debug key, so it installs directly on any
-Android 8.0+ device once "install from unknown sources" is enabled.
+**Android:** [download the latest APK](../../releases/latest/download/BookReader.apk).
+That link never changes and always points at the newest green build. It is
+signed with the debug key, so it installs on any Android 8.0+ device once
+"install from unknown sources" is enabled. (The same APK is also on each
+[Actions](../../actions) run as the `android-apk` artifact, but artifacts expire
+after 90 days and need a GitHub login.)
 
 There is no `.ipa`, and CI cannot make one: signing an iOS app requires an Apple
 Developer certificate that only the developer holds. CI compiles the iOS
@@ -32,21 +48,26 @@ yourself on a Mac — see [iOS](#ios).
 
 | Layer | State |
 |---|---|
-| Platform-independent core | **115 tests passing** in CI on every push |
+| Platform-independent core | **202 tests passing** in CI on every push |
 | Android APK | **Compiles and packages** in CI (debug + release) |
+| Android on a device | **14 instrumented tests** on a CI emulator: schema, migrations, repositories, look-up, and the read-aloud highlight |
 | iOS shared framework | **Compiles** in CI for device and simulator targets |
 | iOS Xcode host app | **Builds** unsigned for the simulator in CI |
-| Anything at runtime | **Not verified — nothing has run on a device** |
+| Read-aloud audio | **Not verified** — CI emulators have no voice data |
+| Anything AI | **Not verified** — no test supplies a key or calls the API |
+| iOS at runtime | **Not verified — nothing has run on an iOS device** |
 
-That last row matters. The core logic is genuinely tested, but the UI, the
-speech engine, PDF rendering and the dictionary wiring have never executed.
-"It builds" is not "it works"; expect runtime bugs on first launch.
+The last rows matter. Audio is driven through a fake speech engine in tests, so
+what is proven is that the highlight advances correctly given the callbacks a
+real engine emits — not that any sound comes out. The AI features are built
+from tested prompts and parsers, but no request has ever been sent.
 
 The tested core is the EPUB container parser, the ZIP reader, the DEFLATE
 decompressor, the XML/XHTML tokenizer, sentence segmentation, word
-tokenization, English lemmatization, the read-aloud plan, and the SM-2
-scheduler — including an end-to-end parse of a real EPUB archive. Run it with
-nothing but a JDK:
+tokenization, English lemmatization, phrasal-verb detection, the read-aloud
+plan, OCR layout reconstruction, the assistant's prompts and reply parsing, the
+vocabulary difficulty model, and the SM-2 scheduler — including an end-to-end
+parse of a real EPUB archive. Run it with nothing but a JDK:
 
 ```
 cd tools/core-verify && gradle test
@@ -137,6 +158,9 @@ composeApp/src/
 │   │   ├── text/        sentence segmentation, word/phrase boundaries
 │   │   ├── dictionary/  lemmatizer, entry model, provider composition
 │   │   ├── tts/         the read-aloud plan (sentence ↔ block ↔ offset mapping)
+│   │   ├── pdf/         OCR layout: words → lines → paragraphs → text offsets
+│   │   ├── ai/          assistant prompts, reply parsing, recap windowing
+│   │   ├── vocab/       word difficulty, reading profile, book fit
 │   │   └── srs/         SM-2 spaced repetition
 │   ├── data/            SQLDelight repositories, bundled dictionary seed
 │   ├── platform/        expect declarations for TTS, PDF, storage, database
@@ -168,6 +192,28 @@ tap-to-look-up needs. PDFKit does both jobs on iOS.
 **Element lookups in the XML tree are case-insensitive.** The tokenizer folds tag
 names for HTML's sake, but EPUB 2's NCX spells its elements `navMap`/`navPoint`
 — a case-sensitive match would silently drop the table of contents.
+
+**System-bar insets are handled once, in the theme.** The app targets API 35,
+where Android 15 enforces edge-to-edge and ignores any request to opt out, so
+the window genuinely extends under both system bars. Padding in
+`BookReaderTheme` consumes the insets, which means every `Scaffold`, app bar and
+navigation bar inside sees them as already handled and does not pad twice.
+
+**The reading profile carries no frequency corpus.** Usable English frequency
+lists are licensed works, and a truncated one would misjudge exactly the
+long-tail words that matter. Difficulty is estimated from a word's own surface —
+length, syllables, and the Latinate and Greek affixes that mark the academic
+layer of English — calibrated against a list of words no reader of English
+novels looks up. It is a heuristic, and the app presents it as one. What it
+never gets wrong is the part that matters: a word the reader has already looked
+up is always marked, because they said so.
+
+**Everything AI is optional and inert without a key.** No key ships in the app —
+anything compiled into an APK can be extracted by whoever downloads it, and it
+would be the developer's key paying for every user's look-ups. Readers supply
+their own in Settings; it is stored in the app's private database and sent only
+to the model provider. Every assistant call returns nothing on any failure, so a
+model that is unreachable or slow leaves the page alone.
 
 ---
 
@@ -201,14 +247,21 @@ first so a tap answers instantly.
 ## Testing
 
 ```bash
-cd tools/core-verify && gradle test          # core logic, no SDKs needed
-./gradlew :composeApp:testDebugUnitTest      # Android unit tests
+cd tools/core-verify && gradle test                  # core logic, no SDKs needed
+./gradlew :composeApp:connectedDebugAndroidTest      # on a device or emulator
 ```
 
 `tools/core-verify` is a standalone Gradle build that compiles the `core`
 sources straight out of `commonMain` and resolves only from Maven Central. It
 exists so the logic most likely to be wrong can be tested on any machine with
-just a JDK — including one that cannot reach Google's Maven repository.
+just a JDK — including one that cannot reach Google's Maven repository. It
+compiles the real sources rather than a copy, so it cannot drift from them.
+
+The instrumented tests are the only place the app's wiring actually runs: the
+SQLDelight schema and its migrations against real SQLite, the seeded dictionary,
+the repositories, and the read-aloud highlight driven by a fake speech engine.
+CI fails the build if the suite runs fewer tests than expected, because a test
+task with no tests still exits 0.
 
 ## Requirements
 
