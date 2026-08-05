@@ -1,0 +1,13 @@
+-- Version 2 -> 3: the look-up history behind the reading profile.
+--
+-- A new table rather than a column, because this records events about words
+-- the reader may never have saved as cards. Readers upgrading start with an
+-- empty history and build one as they read; the profile falls back to its
+-- default threshold until there is enough of it to mean anything.
+CREATE TABLE word_history (
+    word     TEXT    NOT NULL PRIMARY KEY,
+    lookups  INTEGER NOT NULL DEFAULT 0,
+    lastAt   INTEGER NOT NULL
+);
+
+CREATE INDEX word_history_recent ON word_history(lastAt DESC);

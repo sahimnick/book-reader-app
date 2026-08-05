@@ -72,10 +72,12 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bookreader.core.model.BlockStyle
 import com.bookreader.core.model.ContentBlock
+import com.bookreader.core.text.WordTokenizer
 import com.bookreader.data.BookFormat
 import com.bookreader.platform.decodeImage
 import com.bookreader.reader.PlaybackState
@@ -112,16 +114,28 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    // Hidden without a key: an action that can only fail is
-                    // worse than no action at all.
-                    if (state.assistantAvailable) {
-                        IconButton(onClick = { showAssistantMenu = true }) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = "Reading assistant")
-                        }
-                        DropdownMenu(
-                            expanded = showAssistantMenu,
-                            onDismissRequest = { showAssistantMenu = false },
-                        ) {
+                    IconButton(onClick = { showAssistantMenu = true }) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = "Reading tools")
+                    }
+                    DropdownMenu(
+                        expanded = showAssistantMenu,
+                        onDismissRequest = { showAssistantMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (state.markUnknownWords) "Stop marking hard words"
+                                    else "Mark hard words",
+                                )
+                            },
+                            onClick = {
+                                showAssistantMenu = false
+                                viewModel.toggleWordMarks()
+                            },
+                        )
+                        // The rest need a key. An action that can only fail is
+                        // worse than no action at all, so they are hidden.
+                        if (state.assistantAvailable) {
                             DropdownMenuItem(
                                 text = { Text("What happened so far") },
                                 onClick = {
@@ -199,6 +213,7 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
                                 localRange(block, r.first, r.last + 1)
                             },
                             imageBytes = block.imageHref?.let { viewModel.epubResource(it) },
+                            unknownWords = state.unknownWords,
                             onWordTap = { offset -> viewModel.lookupWord(index, block.text, offset) },
                             onLongPress = { viewModel.playFromBlock(index) },
                         )
@@ -300,6 +315,7 @@ private fun BlockView(
     sentenceRange: IntRange?,
     wordRange: IntRange?,
     imageBytes: ByteArray?,
+    unknownWords: Set<String>,
     onWordTap: (Int) -> Unit,
     onLongPress: () -> Unit,
 ) {
@@ -329,10 +345,31 @@ private fun BlockView(
     val style = textStyleFor(block.style)
     val highlight = MaterialTheme.colorScheme.primaryContainer
     val wordHighlight = MaterialTheme.colorScheme.secondaryContainer
+    val markColour = MaterialTheme.colorScheme.tertiary
 
-    val annotated: AnnotatedString = remember(block.text, sentenceRange, wordRange, highlight) {
+    val annotated: AnnotatedString = remember(
+        block.text, sentenceRange, wordRange, unknownWords, highlight,
+    ) {
         buildAnnotatedString {
             append(block.text)
+
+            // Words the reader is likely not to know, marked before the
+            // read-aloud highlights so those still win where they overlap.
+            if (unknownWords.isNotEmpty()) {
+                for (span in WordTokenizer.words(block.text)) {
+                    if (WordTokenizer.normalize(span.text) in unknownWords) {
+                        addStyle(
+                            SpanStyle(
+                                textDecoration = TextDecoration.Underline,
+                                color = markColour,
+                            ),
+                            span.start,
+                            span.endExclusive,
+                        )
+                    }
+                }
+            }
+
             sentenceRange?.let {
                 addStyle(SpanStyle(background = highlight), it.first, it.last + 1)
             }

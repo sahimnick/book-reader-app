@@ -94,6 +94,11 @@ data class ReaderUiState(
     val assistant: AssistantPanel? = null,
     /** The last paragraph the reader touched — what "this paragraph" means. */
     val focusBlock: Int = -1,
+
+    // Vocabulary
+    /** Normalised words in this unit the reader is likely not to know. */
+    val unknownWords: Set<String> = emptySet(),
+    val markUnknownWords: Boolean = true,
 )
 
 /**
@@ -147,7 +152,12 @@ class ReaderViewModel(
         scope.launch {
             _state.update { it.copy(isLoading = true, error = null, book = book) }
             container.books.touch(book.id)
-            _state.update { it.copy(assistantAvailable = container.assistant.isEnabled()) }
+            _state.update {
+                it.copy(
+                    assistantAvailable = container.assistant.isEnabled(),
+                    markUnknownWords = container.vocabulary.isMarkingEnabled(),
+                )
+            }
             val saved = container.books.position(book.id)
 
             when (book.format) {
@@ -241,6 +251,34 @@ class ReaderViewModel(
 
                 else -> _state.update { it.copy(isLoading = false) }
             }
+
+            markUnknownWords()
+        }
+    }
+
+    /**
+     * Marks the words in the loaded unit the reader is likely not to know.
+     *
+     * Run after the unit is shown rather than before, so a slow profile lookup
+     * never delays the page appearing — the marks arrive a frame later.
+     */
+    private suspend fun markUnknownWords() {
+        if (!_state.value.markUnknownWords) {
+            _state.update { it.copy(unknownWords = emptySet()) }
+            return
+        }
+        val text = _state.value.document.flattenedText
+        val marks = runCatching { container.vocabulary.likelyUnknown(text) }
+            .getOrDefault(emptySet())
+        _state.update { it.copy(unknownWords = marks) }
+    }
+
+    fun toggleWordMarks() {
+        val enabled = !_state.value.markUnknownWords
+        _state.update { it.copy(markUnknownWords = enabled) }
+        scope.launch {
+            container.vocabulary.setMarkingEnabled(enabled)
+            markUnknownWords()
         }
     }
 
@@ -454,6 +492,9 @@ class ReaderViewModel(
             }
 
             val entry = hit ?: WordEntry.notFound(anchor.text)
+            // Stopping on a word is the evidence the reading profile is built
+            // from, whether or not it becomes a card — most look-ups do not.
+            container.vocabulary.recordLookup(matched.text)
             val alreadySaved = container.flashcards.contains(matched.text.lowercase())
             _state.update {
                 it.copy(isLookingUp = false, lookup = LookupResult(entry, context, alreadySaved))
@@ -492,6 +533,7 @@ class ReaderViewModel(
                 container.dictionary.lookup(WordTokenizer.normalize(query))
             } ?: WordEntry.notFound(query)
 
+            container.vocabulary.recordLookup(query)
             val alreadySaved = container.flashcards.contains(query.lowercase())
             _state.update {
                 it.copy(

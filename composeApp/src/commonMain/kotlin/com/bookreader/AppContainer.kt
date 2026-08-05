@@ -11,6 +11,7 @@ import com.bookreader.data.FreeDictionaryProvider
 import com.bookreader.data.GoogleTranslateProvider
 import com.bookreader.data.MergingOnlineDictionary
 import com.bookreader.data.SqliteDictionary
+import com.bookreader.data.VocabularyRepository
 import com.bookreader.db.BookReaderDb
 import com.bookreader.platform.DatabaseDriverFactory
 import com.bookreader.platform.FileStorage
@@ -45,6 +46,9 @@ class AppContainer(
     val books: BookRepository by lazy { BookRepository(database) }
 
     val flashcards: FlashcardRepository by lazy { FlashcardRepository(database) }
+
+    /** What the reader looks up, and the reading level it implies. */
+    val vocabulary: VocabularyRepository by lazy { VocabularyRepository(database) }
 
     private val offlineDictionary: SqliteDictionary by lazy { SqliteDictionary(database) }
 

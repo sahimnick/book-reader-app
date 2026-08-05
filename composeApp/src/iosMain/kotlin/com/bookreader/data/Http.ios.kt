@@ -14,9 +14,20 @@ import platform.Foundation.NSURLSession
 import platform.Foundation.dataTaskWithRequest
 import platform.Foundation.setHTTPBody
 import platform.Foundation.setHTTPMethod
+import platform.Foundation.NSURLRequestUseProtocolCachePolicy
 import platform.Foundation.setValue
-import platform.Foundation.setTimeoutInterval
 import kotlin.coroutines.resume
+
+/**
+ * How long a look-up may take before it is abandoned.
+ *
+ * The timeout is set when the request is built rather than assigned afterwards:
+ * `timeoutInterval` is declared read-only on `NSURLRequest` and re-declared
+ * writable on the mutable subclass, and Kotlin/Native does not generate a
+ * setter for that shape. The three-argument constructor is the supported way in.
+ */
+private const val LOOKUP_TIMEOUT_SECONDS = 8.0
+private const val MODEL_TIMEOUT_SECONDS = 30.0
 
 @OptIn(ExperimentalForeignApi::class)
 actual suspend fun httpGet(url: String): String? = suspendCancellableCoroutine { continuation ->
@@ -26,9 +37,12 @@ actual suspend fun httpGet(url: String): String? = suspendCancellableCoroutine {
         return@suspendCancellableCoroutine
     }
 
-    val request = NSMutableURLRequest.requestWithURL(nsUrl).apply {
+    val request = NSMutableURLRequest.requestWithURL(
+        nsUrl,
+        NSURLRequestUseProtocolCachePolicy,
+        LOOKUP_TIMEOUT_SECONDS,
+    ).apply {
         setHTTPMethod("GET")
-        setTimeoutInterval(8.0)
         setValue("Mozilla/5.0 (iOS) BookReader/1.0", forHTTPHeaderField = "User-Agent")
         setValue("application/json", forHTTPHeaderField = "Accept")
     }
@@ -54,9 +68,12 @@ actual suspend fun httpPost(
         return@suspendCancellableCoroutine
     }
 
-    val request = NSMutableURLRequest.requestWithURL(nsUrl).apply {
+    val request = NSMutableURLRequest.requestWithURL(
+        nsUrl,
+        NSURLRequestUseProtocolCachePolicy,
+        MODEL_TIMEOUT_SECONDS,
+    ).apply {
         setHTTPMethod("POST")
-        setTimeoutInterval(30.0)
         headers.forEach { (k, v) -> setValue(v, forHTTPHeaderField = k) }
         setHTTPBody(body.encodeToByteArray().toNSData())
     }

@@ -1,5 +1,6 @@
 package com.bookreader.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -51,7 +52,11 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
+fun SettingsScreen(
+    container: AppContainer,
+    onOpenProfile: () -> Unit,
+    onBack: () -> Unit,
+) {
     var apiKey by remember { mutableStateOf("") }
     var model by remember { mutableStateOf(AiSettings.DEFAULT_MODEL) }
     var revealKey by remember { mutableStateOf(false) }
@@ -84,6 +89,21 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
         ) {
+            Card(Modifier.fillMaxWidth().clickable(onClick = onOpenProfile)) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Reading profile", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Your level, the words you look up most, and which books in " +
+                            "your library are at that level.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             Text("Smart lookup", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
             Text(

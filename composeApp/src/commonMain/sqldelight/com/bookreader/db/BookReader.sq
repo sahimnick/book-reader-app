@@ -146,6 +146,40 @@ WHERE id = ?;
 deleteFlashcard:
 DELETE FROM flashcard WHERE id = ?;
 
+-- Look-up history, the raw material of the reading profile -----------------
+
+-- Every word the reader has stopped on. A word looked up repeatedly is a
+-- stronger signal than one glanced at once, so the count is kept rather than
+-- just the fact of it.
+CREATE TABLE word_history (
+    word     TEXT    NOT NULL PRIMARY KEY,   -- normalised lookup key
+    lookups  INTEGER NOT NULL DEFAULT 0,
+    lastAt   INTEGER NOT NULL
+);
+
+CREATE INDEX word_history_recent ON word_history(lastAt DESC);
+
+-- Two statements rather than an upsert: ON CONFLICT DO UPDATE needs SQLite
+-- 3.24, and Android 8.0 — which this app still supports — ships 3.18.
+insertWordIfAbsent:
+INSERT OR IGNORE INTO word_history(word, lookups, lastAt) VALUES (?, 0, ?);
+
+bumpWord:
+UPDATE word_history SET lookups = lookups + 1, lastAt = ? WHERE word = ?;
+
+selectWordHistory:
+SELECT * FROM word_history ORDER BY lookups DESC, lastAt DESC;
+
+countWordHistory:
+SELECT count(*) FROM word_history;
+
+clearWordHistory:
+DELETE FROM word_history;
+
+-- Words on cards the reader keeps getting wrong.
+selectLapsedWords:
+SELECT word FROM flashcard WHERE lapses > 0;
+
 -- App settings (API key, model choice) -----------------------------------
 
 CREATE TABLE app_setting (

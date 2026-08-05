@@ -90,6 +90,40 @@ class AppRuntimeTest {
     }
 
     /**
+     * The look-up history against real SQLite.
+     *
+     * The counter is incremented with an INSERT OR IGNORE followed by an
+     * UPDATE rather than an upsert, because `ON CONFLICT DO UPDATE` needs
+     * SQLite 3.24 and this app still supports Android 8.0, which ships 3.18.
+     * That is exactly the kind of thing that works on a modern emulator and
+     * fails on a real old phone, so the counting is asserted rather than
+     * assumed.
+     */
+    @Test
+    fun looking_a_word_up_twice_counts_it_twice() = runBlocking {
+        val app = container()
+        app.vocabulary.clear()
+
+        app.vocabulary.recordLookup("Ubiquitous")
+        app.vocabulary.recordLookup("ubiquitous,")
+        app.vocabulary.recordLookup("meadow")
+
+        val history = app.vocabulary.mostLookedUp()
+        val ubiquitous = history.firstOrNull { it.word == "ubiquitous" }
+        assertNotNull(ubiquitous, "history was $history")
+        assertEquals(2, ubiquitous.lookups, "case and punctuation should collapse to one row")
+        assertEquals(2, app.vocabulary.historySize().toInt())
+
+        // A looked-up word is marked wherever it appears again.
+        assertTrue(
+            app.vocabulary.likelyUnknown("The meadow was quiet.").contains("meadow"),
+            "a word they looked up was not marked",
+        )
+        app.vocabulary.clear()
+        assertEquals(0, app.vocabulary.historySize().toInt())
+    }
+
+    /**
      * The generated-material columns against real SQLite.
      *
      * They arrived with a schema migration, so this is the check that the new

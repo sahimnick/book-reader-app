@@ -57,6 +57,7 @@ private sealed interface Screen {
     data object Library : Screen
     data object Flashcards : Screen
     data object Settings : Screen
+    data object ReadingProfile : Screen
     data class Reading(val book: LibraryBook) : Screen
 }
 
@@ -91,7 +92,14 @@ fun App(
         }
 
         when (val current = screen) {
-            is Screen.Settings -> SettingsScreen(container) { screen = Screen.Library }
+            is Screen.Settings -> SettingsScreen(
+                container = container,
+                onOpenProfile = { screen = Screen.ReadingProfile },
+                onBack = { screen = Screen.Library },
+            )
+
+            is Screen.ReadingProfile ->
+                ReadingProfileScreen(container) { screen = Screen.Settings }
 
             is Screen.Reading -> {
                 val viewModel = remember(current.book.id) { ReaderViewModel(container, scope) }
@@ -165,7 +173,7 @@ fun App(
                             onChanged = { scope.launch { refresh() } },
                         )
 
-                        is Screen.Reading, is Screen.Settings -> Unit
+                        is Screen.Reading, is Screen.Settings, is Screen.ReadingProfile -> Unit
                     }
                 }
             }
