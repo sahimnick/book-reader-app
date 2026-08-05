@@ -1,6 +1,10 @@
 package com.bookreader.ui
 
 import androidx.compose.foundation.Image
+import com.bookreader.platform.PdfWordBox
+import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.material3.FilledTonalIconButton
@@ -353,6 +357,8 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
 
     var scale by remember(state.unitIndex) { mutableStateOf(1f) }
     var offset by remember(state.unitIndex) { mutableStateOf(Offset.Zero) }
+    var selection by remember(state.unitIndex) { mutableStateOf<List<PdfWordBox>>(emptyList()) }
+    var anchor by remember(state.unitIndex) { mutableStateOf(Offset.Zero) }
 
     fun zoomTo(target: Float) {
         val clamped = target.coerceIn(MIN_PDF_ZOOM, MAX_PDF_ZOOM)
@@ -380,10 +386,8 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
             if (image == null) {
                 CircularProgressIndicator(Modifier.padding(32.dp))
             } else {
-                Image(
-                    bitmap = image,
-                    contentDescription = null,
-                    modifier = Modifier
+                Box(
+                    Modifier
                         .fillMaxWidth()
                         .graphicsLayer(
                             scaleX = scale,
@@ -395,12 +399,38 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 val next = (scale * zoom).coerceIn(MIN_PDF_ZOOM, MAX_PDF_ZOOM)
                                 scale = next
-                                // Panning is only meaningful once zoomed in.
                                 offset = if (next <= 1f) Offset.Zero else offset + pan
                             }
                         }
+                        // Long-press then drag selects a run of words. Requiring
+                        // the long press keeps selection from fighting with pan
+                        // once the page is zoomed in.
+                        .pointerInput(state.unitIndex, state.pdfWords) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { start ->
+                                    anchor = normalized(start, size.width, size.height)
+                                    selection = wordsBetween(state.pdfWords, anchor, anchor)
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    val here = normalized(change.position, size.width, size.height)
+                                    selection = wordsBetween(state.pdfWords, anchor, here)
+                                },
+                                onDragEnd = {
+                                    val phrase = selection.joinToString(" ") { it.text }.trim()
+                                    if (phrase.isNotEmpty()) {
+                                        viewModel.lookup(phrase, phrase)
+                                    }
+                                },
+                                onDragCancel = { selection = emptyList() },
+                            )
+                        }
                         .pointerInput(state.unitIndex, state.pdfWords) {
                             detectTapGestures { tap ->
+                                if (selection.isNotEmpty()) {
+                                    selection = emptyList()
+                                    return@detectTapGestures
+                                }
                                 val w = size.width.toFloat()
                                 val h = size.height.toFloat()
                                 if (w <= 0f || h <= 0f) return@detectTapGestures
@@ -412,8 +442,29 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
                                 }
                             }
                         },
-                    contentScale = ContentScale.FillWidth,
-                )
+                ) {
+                    Image(
+                        bitmap = image,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.FillWidth,
+                    )
+                    // Selection overlay. Drawn over the page in the same
+                    // transformed space, so it tracks the text under zoom and pan.
+                    val highlightColor = MaterialTheme.colorScheme.primary
+                    Canvas(Modifier.matchParentSize()) {
+                        for (word in selection) {
+                            drawRect(
+                                color = highlightColor.copy(alpha = 0.28f),
+                                topLeft = Offset(word.left * this.size.width, word.top * this.size.height),
+                                size = Size(
+                                    (word.right - word.left) * this.size.width,
+                                    (word.bottom - word.top) * this.size.height,
+                                ),
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -452,6 +503,44 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
             }
         }
     }
+}
+
+private fun normalized(point: Offset, width: Int, height: Int): Offset =
+    if (width <= 0 || height <= 0) Offset.Zero
+    else Offset(point.x / width, point.y / height)
+
+/**
+ * The run of words between two points, in reading order.
+ *
+ * Selection follows the text flow rather than the rectangle the finger swept:
+ * dragging from the middle of one line to the middle of the next should take
+ * the end of the first line and the start of the second, not a box spanning
+ * both. Word boxes carry their offset in the page's extracted text, which is
+ * exactly that ordering.
+ */
+private fun wordsBetween(
+    words: List<PdfWordBox>,
+    from: Offset,
+    to: Offset,
+): List<PdfWordBox> {
+    if (words.isEmpty()) return emptyList()
+
+    fun nearest(point: Offset): PdfWordBox? =
+        words.firstOrNull { it.contains(point.x, point.y) }
+            ?: words.minByOrNull { box ->
+                val cx = (box.left + box.right) / 2f
+                val cy = (box.top + box.bottom) / 2f
+                val dx = cx - point.x
+                // Vertical distance dominates: prefer a word on the same line.
+                val dy = (cy - point.y) * 3f
+                dx * dx + dy * dy
+            }
+
+    val a = nearest(from) ?: return emptyList()
+    val b = nearest(to) ?: return emptyList()
+    val lo = minOf(a.charOffset, b.charOffset)
+    val hi = maxOf(a.charOffset, b.charOffset)
+    return words.filter { it.charOffset in lo..hi }.sortedBy { it.charOffset }
 }
 
 private const val MIN_PDF_ZOOM = 1f
