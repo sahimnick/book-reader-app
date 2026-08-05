@@ -5,6 +5,7 @@ import com.bookreader.core.dictionary.Sense
 import com.bookreader.core.dictionary.WordEntry
 import com.bookreader.core.epub.EpubBook
 import com.bookreader.core.model.ContentDocument
+import com.bookreader.core.text.PhraseDetector
 import com.bookreader.core.text.WordTokenizer
 import com.bookreader.core.tts.SpeechPlan
 import com.bookreader.data.BookFormat
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** What the reader is currently doing. */
 enum class PlaybackState { IDLE, PREPARING, SPEAKING, PAUSED }
@@ -273,12 +275,15 @@ class ReaderViewModel(
         scope.launch {
             _state.update { it.copy(playback = PlaybackState.PREPARING) }
             if (!speechReady) {
-                speechReady = container.speech.prepare()
+                // A platform engine that never reports init must not strand
+                // playback in PREPARING with no feedback.
+                speechReady = withTimeoutOrNull(5_000) { container.speech.prepare() } ?: false
                 if (!speechReady) {
                     _state.update {
                         it.copy(
                             playback = PlaybackState.IDLE,
-                            error = "Text-to-speech is unavailable on this device",
+                            error = "Text-to-speech is unavailable. Install or enable a " +
+                                "speech engine in Android settings, then try again.",
                         )
                     }
                     return@launch
@@ -354,10 +359,45 @@ class ReaderViewModel(
 
     // --- Lookup ----------------------------------------------------------
 
-    /** Looks up a tapped word, using its sentence as the saved context. */
+    /**
+     * Looks up a tapped word, trying the phrase it belongs to first.
+     *
+     * Tapping "up" in "he gave up" must answer *give up*, not *up*.
+     * [PhraseDetector] proposes candidates longest-first; the first one the
+     * dictionary recognises wins, and the bare word is always last so there is
+     * always an answer.
+     */
     fun lookupWord(blockText: String, offsetInBlock: Int) {
-        val span = WordTokenizer.wordAt(blockText, offsetInBlock) ?: return
-        lookup(span.text, contextOf(blockText, span.start))
+        val candidates = PhraseDetector.candidatesAt(blockText, offsetInBlock)
+        if (candidates.isEmpty()) return
+        val anchor = candidates.last()
+
+        scope.launch {
+            _state.update { it.copy(isLookingUp = true) }
+            val context = contextOf(blockText, anchor.start)
+
+            var hit: WordEntry? = null
+            var matched = anchor
+            for (candidate in candidates) {
+                val key = PhraseDetector.normalizePhrase(candidate.text)
+                val entry = if (key.contains(' ')) {
+                    container.dictionary.lookupPhrase(key)
+                } else {
+                    container.dictionary.lookup(key)
+                }
+                if (entry != null && !entry.isEmpty) {
+                    hit = entry.copy(queried = candidate.text)
+                    matched = candidate
+                    break
+                }
+            }
+
+            val entry = hit ?: WordEntry.notFound(anchor.text)
+            val alreadySaved = container.flashcards.contains(matched.text.lowercase())
+            _state.update {
+                it.copy(isLookingUp = false, lookup = LookupResult(entry, context, alreadySaved))
+            }
+        }
     }
 
     fun lookupSelection(blockText: String, start: Int, end: Int) {

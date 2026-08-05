@@ -30,10 +30,22 @@ private class AndroidSpeechEngine(context: PlatformContext) : SpeechEngine {
     override val events: SharedFlow<SpeechEvent> = _events
 
     @Volatile private var initialised = false
+
+    /**
+     * Whether the engine's init callback has fired at all, successfully or not.
+     *
+     * Distinct from [initialised] on purpose. TextToSpeech reports init exactly
+     * once; if it reported failure before anything called [prepare], then
+     * waiting on the callback waits forever. Tracking completion separately lets
+     * [prepare] answer immediately in that case instead of hanging the play
+     * button with no audio, no highlight and no error.
+     */
+    @Volatile private var initCompleted = false
     private var pendingInit: ((Boolean) -> Unit)? = null
 
     private val tts = TextToSpeech(context.androidContext) { status ->
         initialised = status == TextToSpeech.SUCCESS
+        initCompleted = true
         if (initialised) {
             _events.tryEmit(SpeechEvent.Ready)
         } else {
@@ -69,12 +81,15 @@ private class AndroidSpeechEngine(context: PlatformContext) : SpeechEngine {
     }
 
     override suspend fun prepare(): Boolean {
-        if (initialised) return true
+        if (initCompleted) return initialised
         return suspendCancellableCoroutine { cont ->
-            if (initialised) {
-                cont.resume(true)
+            // Re-check inside the coroutine: init can land between the check
+            // above and this block.
+            if (initCompleted) {
+                cont.resume(initialised)
             } else {
                 pendingInit = { ok -> if (cont.isActive) cont.resume(ok) }
+                cont.invokeOnCancellation { pendingInit = null }
             }
         }
     }
