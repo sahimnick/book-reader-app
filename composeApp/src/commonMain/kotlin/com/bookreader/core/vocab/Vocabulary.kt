@@ -258,8 +258,8 @@ object Vocabulary {
         for (span in words) {
             val key = WordTokenizer.normalize(span.text)
             if (key.length < 3) continue
-            val isUnknown = verdicts.getOrPut(key) { isUnknown(key, profile) }
-            if (isUnknown) {
+            val unknownHere = verdicts.getOrPut(key) { isUnknown(key, profile) }
+            if (unknownHere) {
                 unknown.add(key)
                 unknownOccurrences++
             }

@@ -252,7 +252,7 @@ class ReaderViewModel(
                 else -> _state.update { it.copy(isLoading = false) }
             }
 
-            markUnknownWords()
+            refreshWordMarks()
         }
     }
 
@@ -262,7 +262,7 @@ class ReaderViewModel(
      * Run after the unit is shown rather than before, so a slow profile lookup
      * never delays the page appearing — the marks arrive a frame later.
      */
-    private suspend fun markUnknownWords() {
+    private suspend fun refreshWordMarks() {
         if (!_state.value.markUnknownWords) {
             _state.update { it.copy(unknownWords = emptySet()) }
             return
@@ -278,7 +278,7 @@ class ReaderViewModel(
         _state.update { it.copy(markUnknownWords = enabled) }
         scope.launch {
             container.vocabulary.setMarkingEnabled(enabled)
-            markUnknownWords()
+            refreshWordMarks()
         }
     }
 
