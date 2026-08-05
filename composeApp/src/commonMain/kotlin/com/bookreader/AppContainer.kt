@@ -2,6 +2,7 @@ package com.bookreader
 
 import com.bookreader.core.dictionary.CompositeDictionary
 import com.bookreader.core.dictionary.DictionaryProvider
+import com.bookreader.data.AiAssistant
 import com.bookreader.data.AiDictionaryProvider
 import com.bookreader.data.AiSettings
 import com.bookreader.data.BookRepository
@@ -63,6 +64,9 @@ class AppContainer(
      * not — it is the slowest and the only one that costs money.
      */
     val aiDictionary: AiDictionaryProvider by lazy { AiDictionaryProvider(database, aiSettings) }
+
+    /** Study-material generation, passage questions, recaps and translation. */
+    val assistant: AiAssistant by lazy { AiAssistant(database, aiSettings) }
 
     val dictionary: DictionaryProvider by lazy {
         CompositeDictionary(
