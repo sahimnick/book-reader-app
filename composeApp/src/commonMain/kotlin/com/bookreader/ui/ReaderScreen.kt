@@ -1,6 +1,14 @@
 package com.bookreader.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material.icons.filled.ZoomOut
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -328,8 +336,14 @@ private fun textStyleFor(style: BlockStyle): TextStyle = when (style) {
 }
 
 /**
- * Renders the current PDF page and hit-tests taps against the extracted word
- * boxes, so looking a word up works the same on a PDF as in an EPUB.
+ * Renders the current PDF page with pinch-zoom and pan, and hit-tests taps
+ * against the extracted word boxes so look-up works the same on a PDF as in an
+ * EPUB.
+ *
+ * The gesture detector sits *after* `graphicsLayer` in the modifier chain, so
+ * tap coordinates arrive in the page's own untransformed space. Combined with
+ * word boxes normalised to 0..1, that means hit-testing needs no zoom maths at
+ * all — a tap lands on the same word at 1x and at 5x.
  */
 @Composable
 private fun PdfPageView(viewModel: ReaderViewModel) {
@@ -337,44 +351,112 @@ private fun PdfPageView(viewModel: ReaderViewModel) {
     var bitmap by remember(state.unitIndex) { mutableStateOf<ImageBitmap?>(null) }
     var widthPx by remember { mutableStateOf(0) }
 
-    LaunchedEffect(state.unitIndex, widthPx) {
-        if (widthPx > 0) bitmap = viewModel.renderPdfPage(widthPx)
+    var scale by remember(state.unitIndex) { mutableStateOf(1f) }
+    var offset by remember(state.unitIndex) { mutableStateOf(Offset.Zero) }
+
+    fun zoomTo(target: Float) {
+        val clamped = target.coerceIn(MIN_PDF_ZOOM, MAX_PDF_ZOOM)
+        if (clamped <= 1f) offset = Offset.Zero
+        scale = clamped
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .onSizeChanged { widthPx = it.width },
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        val image = bitmap
-        if (image == null) {
-            CircularProgressIndicator(Modifier.padding(32.dp))
-        } else {
-            Image(
-                bitmap = image,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .pointerInput(state.unitIndex, state.pdfWords) {
-                        detectTapGestures { offset ->
-                            val w = size.width.toFloat()
-                            val h = size.height.toFloat()
-                            if (w <= 0f || h <= 0f) return@detectTapGestures
-                            val nx = offset.x / w
-                            val ny = offset.y / h
-                            val hit = state.pdfWords.firstOrNull { it.contains(nx, ny) }
-                            if (hit != null) {
-                                val context = state.document.flattenedText
-                                viewModel.lookup(hit.text, context.take(300))
+    // Re-render the page bitmap at higher resolution as the reader zooms in, so
+    // text stays sharp instead of turning into a magnified blur. Bucketed to
+    // whole steps: re-rendering on every pixel of pinch would thrash the
+    // renderer for no visible gain.
+    val renderBucket = scale.toInt().coerceIn(1, 4)
+    LaunchedEffect(state.unitIndex, widthPx, renderBucket) {
+        if (widthPx > 0) bitmap = viewModel.renderPdfPage(widthPx * renderBucket)
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged { widthPx = it.width },
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            val image = bitmap
+            if (image == null) {
+                CircularProgressIndicator(Modifier.padding(32.dp))
+            } else {
+                Image(
+                    bitmap = image,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale,
+                            translationX = offset.x,
+                            translationY = offset.y,
+                        )
+                        .pointerInput(state.unitIndex) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                val next = (scale * zoom).coerceIn(MIN_PDF_ZOOM, MAX_PDF_ZOOM)
+                                scale = next
+                                // Panning is only meaningful once zoomed in.
+                                offset = if (next <= 1f) Offset.Zero else offset + pan
                             }
                         }
-                    },
-                contentScale = ContentScale.FillWidth,
-            )
+                        .pointerInput(state.unitIndex, state.pdfWords) {
+                            detectTapGestures { tap ->
+                                val w = size.width.toFloat()
+                                val h = size.height.toFloat()
+                                if (w <= 0f || h <= 0f) return@detectTapGestures
+                                val hit = state.pdfWords.firstOrNull {
+                                    it.contains(tap.x / w, tap.y / h)
+                                }
+                                if (hit != null) {
+                                    viewModel.lookup(hit.text, state.document.flattenedText.take(300))
+                                }
+                            }
+                        },
+                    contentScale = ContentScale.FillWidth,
+                )
+            }
+        }
+
+        // Explicit controls as well as pinch: a reader who does not think to
+        // pinch still needs a way to zoom, and buttons give exact steps.
+        Row(
+            Modifier
+                .align(Alignment.BottomEnd)
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (scale > 1f) {
+                Surface(tonalElevation = 3.dp, shape = CircleShape) {
+                    Text(
+                        "${(scale * 100).toInt()}%",
+                        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+                FilledTonalIconButton(onClick = { zoomTo(1f) }) {
+                    Icon(Icons.Default.CenterFocusStrong, contentDescription = "Reset zoom")
+                }
+            }
+            FilledTonalIconButton(
+                onClick = { zoomTo(scale - PDF_ZOOM_STEP) },
+                enabled = scale > MIN_PDF_ZOOM,
+            ) {
+                Icon(Icons.Default.ZoomOut, contentDescription = "Zoom out")
+            }
+            FilledTonalIconButton(
+                onClick = { zoomTo(scale + PDF_ZOOM_STEP) },
+                enabled = scale < MAX_PDF_ZOOM,
+            ) {
+                Icon(Icons.Default.ZoomIn, contentDescription = "Zoom in")
+            }
         }
     }
 }
+
+private const val MIN_PDF_ZOOM = 1f
+private const val MAX_PDF_ZOOM = 5f
+private const val PDF_ZOOM_STEP = 0.5f
 
 @Composable
 private fun PlaybackBar(
