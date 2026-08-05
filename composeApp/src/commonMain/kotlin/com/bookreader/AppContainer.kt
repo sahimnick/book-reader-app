@@ -22,7 +22,16 @@ import com.bookreader.platform.createSpeechEngine
  * compile-time processor for a graph this small; constructing it by hand keeps
  * the iOS build simple and the startup path obvious.
  */
-class AppContainer(val platformContext: PlatformContext) {
+class AppContainer(
+    val platformContext: PlatformContext,
+    /**
+     * How the speech engine is built. Injectable so tests can drive playback
+     * with scripted events: a CI emulator has no voice data, so the only way to
+     * verify that the sentence highlight actually advances is to supply the
+     * events a real engine would emit.
+     */
+    private val speechEngineFactory: (PlatformContext) -> SpeechEngine = ::createSpeechEngine,
+) {
 
     val database: BookReaderDb by lazy {
         BookReaderDb(DatabaseDriverFactory(platformContext).createDriver())
@@ -56,7 +65,7 @@ class AppContainer(val platformContext: PlatformContext) {
         )
     }
 
-    val speech: SpeechEngine by lazy { createSpeechEngine(platformContext) }
+    val speech: SpeechEngine by lazy { speechEngineFactory(platformContext) }
 
     /** Loads the bundled dictionary on first launch. */
     suspend fun warmUp() {

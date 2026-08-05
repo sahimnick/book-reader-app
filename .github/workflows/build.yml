@@ -135,8 +135,8 @@ jobs:
           failed=$(grep -o '[0-9]*' /tmp/f.txt | awk '{s+=$1} END {print s+0}')
           errors=$(grep -o '[0-9]*' /tmp/e.txt | awk '{s+=$1} END {print s+0}')
           echo "INSTRUMENTED RESULTS: tests=$total failures=$failed errors=$errors"
-          if [ "$total" -lt 6 ]; then
-            echo "Expected at least 6 instrumented tests, saw $total."
+          if [ "$total" -lt 12 ]; then
+            echo "Expected at least 12 instrumented tests, saw $total."
             exit 1
           fi
           if [ "$failed" -ne 0 ] || [ "$errors" -ne 0 ]; then
