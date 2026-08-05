@@ -185,10 +185,9 @@ class HighlightTest {
         engine.prepareResult = false
         viewModel.playFromBlock(0)
 
-        awaitUntil("failure surfaced") {
-            val s = viewModel.state.value
-            s.error != null || s.playback == PlaybackState.IDLE
-        }
+        // Wait for the error specifically. Playback *starts* IDLE, so treating
+        // IDLE as the signal returns before startSpeaking has even run.
+        awaitUntil("failure surfaced") { viewModel.state.value.error != null }
         val state = viewModel.state.value
         assertTrue(state.playback != PlaybackState.PREPARING, "must not stay stuck in PREPARING")
         assertNotNull(state.error, "an unavailable engine must tell the reader why")
