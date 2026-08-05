@@ -375,6 +375,9 @@ class ReaderViewModel(
         scope.launch {
             _state.update { it.copy(isLookingUp = true) }
             val context = contextOf(blockText, anchor.start)
+            // The sentence is what makes the AI lookup context-aware; without
+            // it the model is answering the same question as a plain dictionary.
+            container.aiDictionary.context = context
 
             var hit: WordEntry? = null
             var matched = anchor

@@ -1,5 +1,8 @@
 plugins {
     kotlin("jvm") version "2.0.21"
+    // The core now parses JSON (AI dictionary replies), so the harness needs
+    // the same serialization runtime the shared module uses.
+    kotlin("plugin.serialization") version "2.0.21"
 }
 
 repositories { mavenCentral() }
@@ -20,6 +23,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     testImplementation(kotlin("test"))
 }
 

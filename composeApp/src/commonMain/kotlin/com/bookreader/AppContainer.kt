@@ -2,6 +2,8 @@ package com.bookreader
 
 import com.bookreader.core.dictionary.CompositeDictionary
 import com.bookreader.core.dictionary.DictionaryProvider
+import com.bookreader.data.AiDictionaryProvider
+import com.bookreader.data.AiSettings
 import com.bookreader.data.BookRepository
 import com.bookreader.data.FlashcardRepository
 import com.bookreader.data.FreeDictionaryProvider
@@ -53,6 +55,15 @@ class AppContainer(
      * only touched for the long tail. Google Translate also handles multi-word
      * phrases, which a headword dictionary cannot.
      */
+    val aiSettings: AiSettings by lazy { AiSettings(database) }
+
+    /**
+     * Context-aware lookup. Inert until the reader supplies an API key, and
+     * placed last so it only answers what the offline and free sources could
+     * not — it is the slowest and the only one that costs money.
+     */
+    val aiDictionary: AiDictionaryProvider by lazy { AiDictionaryProvider(database, aiSettings) }
+
     val dictionary: DictionaryProvider by lazy {
         CompositeDictionary(
             listOf(
@@ -61,6 +72,7 @@ class AppContainer(
                     english = FreeDictionaryProvider(),
                     persian = GoogleTranslateProvider(),
                 ),
+                aiDictionary,
             ),
         )
     }

@@ -136,3 +136,33 @@ WHERE id = ?;
 
 deleteFlashcard:
 DELETE FROM flashcard WHERE id = ?;
+
+-- App settings (API key, model choice) -----------------------------------
+
+CREATE TABLE app_setting (
+    key   TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+putSetting:
+INSERT OR REPLACE INTO app_setting(key, value) VALUES (?, ?);
+
+getSetting:
+SELECT value FROM app_setting WHERE key = ?;
+
+-- Cached AI lookups, keyed by term plus context ---------------------------
+
+CREATE TABLE ai_cache (
+    cacheKey  TEXT    NOT NULL PRIMARY KEY,
+    reply     TEXT    NOT NULL,
+    createdAt INTEGER NOT NULL
+);
+
+putAiCache:
+INSERT OR REPLACE INTO ai_cache(cacheKey, reply, createdAt) VALUES (?, ?, ?);
+
+getAiCache:
+SELECT reply FROM ai_cache WHERE cacheKey = ?;
+
+clearAiCache:
+DELETE FROM ai_cache;

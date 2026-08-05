@@ -28,3 +28,26 @@ actual suspend fun httpGet(url: String): String? = withContext(Dispatchers.IO) {
         }
     }.getOrNull()
 }
+
+actual suspend fun httpPost(
+    url: String,
+    headers: Map<String, String>,
+    body: String,
+): String? = withContext(Dispatchers.IO) {
+    runCatching {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            headers.forEach { (k, v) -> setRequestProperty(k, v) }
+        }
+        try {
+            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            if (connection.responseCode !in 200..299) return@runCatching null
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
+    }.getOrNull()
+}
