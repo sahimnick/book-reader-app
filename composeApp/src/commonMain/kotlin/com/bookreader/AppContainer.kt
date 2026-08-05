@@ -79,6 +79,11 @@ class AppContainer(
 
     val speech: SpeechEngine by lazy { speechEngineFactory(platformContext) }
 
+    /** Drops cached AI answers, e.g. after switching model. */
+    suspend fun clearAiCache() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        database.bookReaderQueries.clearAiCache()
+    }
+
     /** Loads the bundled dictionary on first launch. */
     suspend fun warmUp() {
         offlineDictionary.ensureSeeded()

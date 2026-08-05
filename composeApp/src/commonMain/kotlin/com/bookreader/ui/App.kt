@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,6 +56,7 @@ import kotlinx.coroutines.launch
 private sealed interface Screen {
     data object Library : Screen
     data object Flashcards : Screen
+    data object Settings : Screen
     data class Reading(val book: LibraryBook) : Screen
 }
 
@@ -89,6 +91,8 @@ fun App(
         }
 
         when (val current = screen) {
+            is Screen.Settings -> SettingsScreen(container) { screen = Screen.Library }
+
             is Screen.Reading -> {
                 val viewModel = remember(current.book.id) { ReaderViewModel(container, scope) }
                 LaunchedEffect(current.book.id) { viewModel.open(current.book) }
@@ -153,6 +157,7 @@ fun App(
                                 }
                             },
                             onDismissMessage = { message = null },
+                            onOpenSettings = { screen = Screen.Settings },
                         )
 
                         is Screen.Flashcards -> FlashcardsScreen(
@@ -160,7 +165,7 @@ fun App(
                             onChanged = { scope.launch { refresh() } },
                         )
 
-                        is Screen.Reading -> Unit
+                        is Screen.Reading, is Screen.Settings -> Unit
                     }
                 }
             }
@@ -239,9 +244,17 @@ private fun LibraryScreen(
     onOpen: (LibraryBook) -> Unit,
     onDelete: (LibraryBook) -> Unit,
     onDismissMessage: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("My library") })
+        TopAppBar(
+            title = { Text("My library") },
+            actions = {
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                }
+            },
+        )
 
         if (isImporting) {
             Row(
