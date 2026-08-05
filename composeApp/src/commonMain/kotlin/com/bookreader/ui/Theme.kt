@@ -1,11 +1,18 @@
 package com.bookreader.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.intl.Locale
 
@@ -47,15 +54,38 @@ val LocalReaderTheme = compositionLocalOf { ReaderTheme.LIGHT }
 /** True when the UI language is right-to-left, used to mirror Persian content. */
 val LocalIsRtl = compositionLocalOf { false }
 
+/**
+ * Theme, and the one place system-bar insets are handled.
+ *
+ * The app draws edge to edge — Android 15 enforces it for anything targeting
+ * API 35, and iOS has always had a notch and a home indicator — so nothing
+ * keeps content out from under the status bar or the navigation buttons unless
+ * the app arranges it. Doing that here covers every screen at once, and
+ * consuming the insets means the `Scaffold`s, app bars and navigation bars
+ * inside see them as already handled rather than padding a second time.
+ *
+ * The surface behind the padding paints the strip under each bar in the theme's
+ * own colour, so the bars sit on the app rather than on the bare window.
+ *
+ * Bottom sheets are deliberately not covered: they are drawn in their own
+ * window, where these insets do not reach, and Material already pads them.
+ */
 @Composable
 fun BookReaderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        content = content,
-    )
+    MaterialTheme(colorScheme = if (darkTheme) DarkColors else LightColors) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing),
+            ) {
+                content()
+            }
+        }
+    }
 }
 
 /** Persian and Arabic script need right-to-left layout for their own text. */
