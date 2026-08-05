@@ -36,9 +36,9 @@ actual suspend fun openPdfDocument(context: PlatformContext, path: String): PdfD
  * also exposes the text layer with per-character geometry, which is what makes
  * tap-to-look-up possible on a PDF.
  */
-@OptIn(ExperimentalForeignApi::class)
 private const val OCR_RENDER_WIDTH = 2200.0
 
+@OptIn(ExperimentalForeignApi::class)
 private class IosPdfDocument(private val document: PDFDocument) : PdfDocumentSource {
 
     override val pageCount: Int = document.pageCount.toInt()
