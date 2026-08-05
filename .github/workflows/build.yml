@@ -30,6 +30,9 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    # Needed to publish the APK as a release asset.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -49,6 +52,35 @@ jobs:
         with:
           name: android-apk
           path: composeApp/build/outputs/apk/**/*.apk
+
+      # Artifacts expire after 90 days and require a GitHub login to download.
+      # A rolling release gives a permanent, direct link that anyone can fetch:
+      #   .../releases/latest/download/BookReader.apk
+      - name: Publish the APK as a rolling release
+        if: github.ref_name == 'claude/new-repo-env-nyx6kq'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apk=$(find composeApp/build/outputs/apk/release -name '*.apk' | head -1)
+          if [ -z "$apk" ]; then
+            echo "No release APK found to publish."
+            exit 1
+          fi
+          cp "$apk" BookReader.apk
+          echo "Publishing $(du -h BookReader.apk | cut -f1) APK"
+
+          # Replace the previous rolling build rather than accumulating tags.
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest BookReader.apk \
+            --title "Book Reader — latest build" \
+            --notes "Automatic build of \`${GITHUB_SHA:0:7}\`.
+
+          Install on Android 8.0+ (enable \"install from unknown sources\").
+          Signed with the debug key, so it installs directly but is not
+          Play-Store ready — see README, Release signing.
+
+          This binary is built and packaged by CI. Its runtime behaviour is
+          only covered by the instrumented tests in the same run." 
 
   # Boots an emulator and actually runs the app. Everything else in this
   # workflow either tests pure logic or compiles; this is the only job where
