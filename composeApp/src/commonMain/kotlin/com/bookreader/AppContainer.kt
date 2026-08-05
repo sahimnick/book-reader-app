@@ -4,6 +4,9 @@ import com.bookreader.core.dictionary.CompositeDictionary
 import com.bookreader.core.dictionary.DictionaryProvider
 import com.bookreader.data.BookRepository
 import com.bookreader.data.FlashcardRepository
+import com.bookreader.data.FreeDictionaryProvider
+import com.bookreader.data.GoogleTranslateProvider
+import com.bookreader.data.MergingOnlineDictionary
 import com.bookreader.data.SqliteDictionary
 import com.bookreader.db.BookReaderDb
 import com.bookreader.platform.DatabaseDriverFactory
@@ -33,8 +36,24 @@ class AppContainer(val platformContext: PlatformContext) {
 
     private val offlineDictionary: SqliteDictionary by lazy { SqliteDictionary(database) }
 
+    /**
+     * Offline first, then online.
+     *
+     * [CompositeDictionary] always consults offline providers before network
+     * ones, so a word in the bundled data answers instantly and the network is
+     * only touched for the long tail. Google Translate also handles multi-word
+     * phrases, which a headword dictionary cannot.
+     */
     val dictionary: DictionaryProvider by lazy {
-        CompositeDictionary(listOf(offlineDictionary))
+        CompositeDictionary(
+            listOf(
+                offlineDictionary,
+                MergingOnlineDictionary(
+                    english = FreeDictionaryProvider(),
+                    persian = GoogleTranslateProvider(),
+                ),
+            ),
+        )
     }
 
     val speech: SpeechEngine by lazy { createSpeechEngine(platformContext) }
