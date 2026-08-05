@@ -71,6 +71,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.sqldelight.android)
             implementation(libs.pdfbox.android)
+            implementation(libs.mlkit.text.recognition)
         }
 
         iosMain.dependencies {

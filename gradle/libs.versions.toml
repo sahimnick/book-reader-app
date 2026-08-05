@@ -8,6 +8,7 @@ sqldelight = "2.0.2"
 androidxActivity = "1.9.3"
 androidxCore = "1.15.0"
 pdfboxAndroid = "2.0.27.0"
+mlkitTextRecognition = "16.0.1"
 okio = "3.9.1"
 
 compileSdk = "35"
@@ -28,6 +29,7 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfboxAndroid" }
+mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitTextRecognition" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 
 [plugins]

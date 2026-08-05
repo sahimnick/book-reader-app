@@ -37,6 +37,8 @@ actual suspend fun openPdfDocument(context: PlatformContext, path: String): PdfD
         }.getOrNull()
     }
 
+private const val OCR_RENDER_WIDTH = 2200
+
 private class AndroidPdfDocument(file: File) : PdfDocumentSource {
 
     private val descriptor: ParcelFileDescriptor =
@@ -53,6 +55,9 @@ private class AndroidPdfDocument(file: File) : PdfDocumentSource {
     override val pageCount: Int = renderer.pageCount
 
     override suspend fun renderPage(pageIndex: Int, widthPx: Int): ImageBitmap? =
+        renderPageBitmap(pageIndex, widthPx)?.asImageBitmap()
+
+    private suspend fun renderPageBitmap(pageIndex: Int, widthPx: Int): Bitmap? =
         withContext(Dispatchers.IO) {
             if (pageIndex !in 0 until pageCount) return@withContext null
             renderLock.withLock {
@@ -71,15 +76,21 @@ private class AndroidPdfDocument(file: File) : PdfDocumentSource {
                         // render black in dark theme.
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        bitmap.asImageBitmap()
+                        bitmap
                     }
                 }.getOrNull()
             }
         }
 
+    /** Pages whose text came from OCR; recognition is far too slow to repeat. */
+    private val ocrCache = mutableMapOf<Int, PdfPageText>()
+
     override suspend fun pageText(pageIndex: Int): PdfPageText = withContext(Dispatchers.IO) {
-        val document = textDocument ?: return@withContext PdfPageText.Empty
         if (pageIndex !in 0 until pageCount) return@withContext PdfPageText.Empty
+        ocrCache[pageIndex]?.let { return@withContext it }
+
+        val document = textDocument
+        if (document == null) return@withContext ocrPage(pageIndex)
 
         textLock.withLock {
             runCatching {
@@ -89,6 +100,8 @@ private class AndroidPdfDocument(file: File) : PdfDocumentSource {
                     sortByPosition = true
                 }
                 val text = stripper.getText(document)
+                // A scanned page has no text layer at all. Fall through to OCR
+                // rather than returning an unreadable page.
                 if (text.isBlank()) return@runCatching PdfPageText.Empty
 
                 PdfPageText(
@@ -100,6 +113,41 @@ private class AndroidPdfDocument(file: File) : PdfDocumentSource {
                     words = stripper.words,
                 )
             }.getOrDefault(PdfPageText.Empty)
+        }.let { extracted ->
+            // Embedded text wins; OCR is the fallback for scans.
+            if (extracted.words.isNotEmpty()) extracted else ocrPage(pageIndex)
+        }
+    }
+
+    /**
+     * Recognises a rendered page when the PDF carries no text layer.
+     *
+     * Rendered wide deliberately: OCR accuracy tracks resolution, and a page
+     * rendered at screen width loses small type. The result is cached because
+     * recognition costs far more than rendering, and the reader will come back
+     * to this page when it scrolls or replays.
+     */
+    private suspend fun ocrPage(pageIndex: Int): PdfPageText {
+        val bitmap = renderPageBitmap(pageIndex, OCR_RENDER_WIDTH) ?: return PdfPageText.Empty
+        return try {
+            val recognised = AndroidOcr.recognize(bitmap, "page-$pageIndex")
+            val result = PdfPageText(
+                document = recognised.document,
+                words = recognised.words.map {
+                    PdfWordBox(
+                        text = it.text,
+                        left = it.left,
+                        top = it.top,
+                        right = it.right,
+                        bottom = it.bottom,
+                        charOffset = it.charOffset,
+                    )
+                },
+            )
+            ocrCache[pageIndex] = result
+            result
+        } finally {
+            bitmap.recycle()
         }
     }
 
